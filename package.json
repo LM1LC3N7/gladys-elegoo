@@ -1,6 +1,6 @@
 {
   "name": "gladys-elegoo",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Gladys Assistant external integration for Elegoo SDCP 3D printers (Saturn, Mars resin printers and Centauri Carbon), on the local network. Unofficial, not affiliated with Elegoo.",
   "type": "module",

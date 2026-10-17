@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-17
+
 ### Added
 
 - Elegoo SDCP V3 printers on the local network, without the cloud: resin
@@ -31,4 +33,5 @@ the notes of the version's GitHub Release.
 - Reachability on the transport badge, states within the Gladys rate limit,
   temperatures and fans spaced by a minute.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-elegoo/commits/main
+[Unreleased]: https://github.com/LM1LC3N7/gladys-elegoo/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-elegoo/releases/tag/v0.1.1
