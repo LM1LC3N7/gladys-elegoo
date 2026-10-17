@@ -36,8 +36,14 @@ export function probe(host, { timeout = TIMINGS.probeTimeout, create = createSoc
       return;
     }
     socket.on('error', () => finish(undefined));
-    socket.on('message', (datagram) => {
+    // A typed IP: only that machine's answer counts (a host name cannot be compared).
+    const ip = /^[\d.]+$/.test(host) || host.includes(':') ? host.toLowerCase() : undefined;
+    socket.on('message', (datagram, rinfo) => {
       if (datagram.length > LIMITS.datagramBytes) return;
+      const from = String(rinfo?.address ?? '')
+        .toLowerCase()
+        .replace(/^::ffff:/, '');
+      if (ip && from !== ip) return;
       const identity = parseDiscovery(datagram);
       if (identity) finish(identity);
     });

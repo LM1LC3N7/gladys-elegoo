@@ -7,12 +7,14 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-export const emptyData = () => ({ printers: {} });
+// No prototype: a board id can never reach Object.prototype ("__proto__"...).
+export const emptyData = () => ({ printers: Object.create(null) });
 
 function sanitize(data) {
   const base = emptyData();
   if (data && typeof data === 'object' && data.printers && typeof data.printers === 'object') {
-    for (const [id, record] of Object.entries(data.printers)) {
+    for (const id of Object.keys(data.printers)) {
+      const record = data.printers[id];
       if (/^[0-9A-Za-z]{1,64}$/.test(id) && record && typeof record === 'object') {
         base.printers[id] = { ...record, id, caps: Array.isArray(record.caps) ? record.caps : [] };
       }

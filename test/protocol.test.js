@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  isSdcpV1,
   buildRequest,
   parseAttributes,
   parseDiscovery,
@@ -72,6 +73,29 @@ test('discovery and attributes: the identity, validated', () => {
     JSON.stringify({ Id: 'x', Data: { MainboardID: 'ab', Name: 'Bad\u0000\u001bname' } }),
   );
   assert.equal(dirty.name, 'Badname', 'control characters removed');
+});
+
+test('older discovery answers (Data.Attributes) and SDCP V1 printers', () => {
+  const nested = parseDiscovery(
+    JSON.stringify({
+      Id: 'abc',
+      Data: {
+        Attributes: {
+          Name: 'Saturn 3',
+          MachineName: 'ELEGOO Saturn 3 Ultra',
+          MainboardID: 'aabbccdd',
+          ProtocolVersion: 'V1.0.0',
+          MainboardIP: '192.168.1.70',
+        },
+        Status: {},
+      },
+    }),
+  );
+  assert.equal(nested.mainboardId, 'aabbccdd');
+  assert.equal(nested.model, 'ELEGOO Saturn 3 Ultra');
+  assert.equal(isSdcpV1(nested), true);
+  assert.equal(isSdcpV1({ protocol: 'V3.0.0' }), false);
+  assert.equal(isSdcpV1({ protocol: '' }), false);
 });
 
 test('responses and error frames', () => {

@@ -16,12 +16,13 @@ Unofficial integration, not affiliated with Elegoo.
 
 The Elegoo printers that speak **SDCP V3** over a local WebSocket (port 3030):
 
-- resin: Saturn 3 Ultra, Saturn 4 Ultra, Mars 5 Ultra (and the other SDCP V3
-  Saturn / Mars models);
+- resin: Saturn 4 Ultra, Saturn 4 Ultra 16K, Mars 5 Ultra (and the other SDCP
+  V3 Saturn / Mars models);
 - FDM: Centauri Carbon.
 
-Not supported: the Centauri Carbon 2 (another protocol), the older printers
-that speak SDCP V1 over MQTT, and the printers without network.
+Not supported: the Saturn 3 Ultra and the other printers that speak SDCP V1
+over MQTT (the integration recognises them and says so in its status), the
+Centauri Carbon 2 (another protocol), and the printers without network.
 
 ## Setup
 
@@ -103,8 +104,9 @@ Safety rules:
   time (up to 5 minutes).
 - **The search finds nothing**: type the addresses; the discovery depends on
   the network between Gladys and the printers.
-- **A printer changed address**: type the new one; the printer is recognised
-  by its board id, its device and history are kept.
+- **A printer changed address**: replace the old address with the new one in
+  the configuration; the printer is recognised by its board id, its device
+  and history are kept.
 - To forget a printer, remove its address and delete its device.
 
 ## Privacy

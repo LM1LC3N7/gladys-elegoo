@@ -14,6 +14,7 @@ import {
   SCENE_ACTIONS,
   SCENE_TRIGGERS,
   SDCP,
+  TIMINGS,
 } from '../src/constants.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -141,6 +142,12 @@ test('actions, scene triggers and the scene action are the ones the code handles
     CONTROL_COMMANDS,
   );
   assert.ok(!CONTROL_COMMANDS.includes('start'), 'never a print start');
-  assert.ok(control.timeout_seconds >= 15);
+  // The core counts from the scene entering the action, its wait for our
+  // connection (15 s) included: the whole command must still fit, plus a margin.
+  assert.equal(TIMINGS.sceneConnectionWait, 15_000);
+  assert.ok(
+    control.timeout_seconds * 1000 >= 15_000 + TIMINGS.controlBudget + 2_000,
+    `timeout_seconds ${control.timeout_seconds}`,
+  );
   assert.equal(manifest.widgets, undefined);
 });

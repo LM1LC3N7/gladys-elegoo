@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const MOJIBAKE = /[ÂÃ][\u0080-¿€]|â€/;
+const MOJIBAKE = /Ã|Â|â€|Å[’“]/;
 const FILES = [
   'gladys-assistant-integration.json',
   'docs/en.md',
@@ -38,5 +38,6 @@ test('the mojibake pattern catches what it should', () => {
   assert.match('Â«', MOJIBAKE, '« read as Latin-1');
   assert.match('lâ€™app', MOJIBAKE, '’ read as Windows-1252');
   assert.match('finâ€¦', MOJIBAKE, '… read as Windows-1252');
+  assert.match('Å“uvre', MOJIBAKE, 'œ read as Windows-1252');
   assert.doesNotMatch('Français « Découverte » 800×534 — l’app…', MOJIBAKE);
 });

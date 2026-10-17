@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { probe } from '../src/sdcp/probe.js';
 import { PrinterConnection, createWebSocket, socketUrl } from '../src/sdcp/connection.js';
-import { TIMINGS } from '../src/constants.js';
+import { CMD, TIMINGS } from '../src/constants.js';
 import { FakeClock, FakePrinter, FakeSocket, RESIN_ID, flush } from './helpers/fakes.js';
 
 function setup({ printer = new FakePrinter(), autoOpen = true } = {}) {
@@ -29,10 +31,33 @@ function setup({ printer = new FakePrinter(), autoOpen = true } = {}) {
 test('the WebSocket address and its limits', () => {
   assert.equal(socketUrl('192.168.1.50'), 'ws://192.168.1.50:3030/websocket');
   assert.equal(socketUrl('fe80::1'), 'ws://[fe80::1]:3030/websocket');
-  const socket = createWebSocket('ws://127.0.0.1:1/websocket');
-  socket.on('error', () => {});
-  assert.equal(socket._maxPayload ?? 256 * 1024, 256 * 1024);
-  socket.terminate();
+  const made = [];
+  class Spy {
+    constructor(url, options) {
+      made.push({ url, options });
+    }
+  }
+  createWebSocket('ws://192.168.1.50:3030/websocket', Spy);
+  assert.equal(made[0].url, 'ws://192.168.1.50:3030/websocket');
+  assert.equal(made[0].options.maxPayload, 256 * 1024);
+  assert.equal(made[0].options.perMessageDeflate, false);
+  assert.equal(made[0].options.followRedirects, false);
+  assert.equal(made[0].options.handshakeTimeout, TIMINGS.connectTimeout);
+});
+
+test('only status, attributes, pause, stop and resume can ever be sent', async (t) => {
+  assert.deepEqual(
+    Object.values(CMD).sort((a, b) => a - b),
+    [0, 1, 129, 130, 131],
+  );
+  const { connection, printer } = setup();
+  t.after(() => connection.stop());
+  connection.start();
+  await flush();
+  for (const cmd of [128, 132, 133, 192, 255, 258, 259, 386, 401, 402, 403]) {
+    await assert.rejects(connection.request(cmd), { kind: 'forbidden' }, `command ${cmd}`);
+  }
+  assert.deepEqual(printer.commands(), []);
 });
 
 test('connects, sends the protocol heartbeat, and matches the answers', async (t) => {
@@ -44,6 +69,7 @@ test('connects, sends the protocol heartbeat, and matches the answers', async (t
   assert.equal(sockets[0].url, 'ws://192.168.1.50:3030/websocket');
   await clock.advance(TIMINGS.heartbeat);
   assert.equal(sockets[0].sent.at(-1), 'ping');
+  assert.equal(sockets[0].pings, 1, 'and a WebSocket ping frame');
   const answer = await connection.request(129);
   assert.deepEqual([answer.cmd, answer.ack], [129, 0]);
   const request = printer.requests.at(-1);
@@ -65,7 +91,7 @@ test('a request without an answer times out; a lost connection fails the waiting
   await assert.rejects(late, { kind: 'timeout' });
   const lost = connection.request(130);
   sockets[0].drop();
-  await assert.rejects(lost, { kind: 'offline' });
+  await assert.rejects(lost, { kind: 'lost' }, 'sent, then the connection dropped');
   await assert.rejects(connection.request(130), { kind: 'offline' });
 });
 
@@ -103,6 +129,18 @@ test('the watchdog closes a silent connection, the delays grow and stay bounded'
   assert.ok(delays.every((d) => d <= TIMINGS.backoff.at(-1)));
 });
 
+test('a firmware that ignores the "ping" text stays alive on WebSocket pongs', async (t) => {
+  const { clock, sockets, connection, events, printer } = setup();
+  t.after(() => connection.stop());
+  printer.textPong = false;
+  connection.start();
+  await flush();
+  await clock.advance(TIMINGS.watchdog * 3);
+  assert.equal(sockets.length, 1);
+  assert.equal(sockets[0].closed, false);
+  assert.ok(!events.some((e) => Array.isArray(e)));
+});
+
 test('a connection that lived long resets the delays', async (t) => {
   const { clock, sockets, connection, events } = setup();
   t.after(() => connection.stop());
@@ -130,6 +168,38 @@ test('invalid, binary and foreign messages are ignored', async (t) => {
   sockets[0].deliver('not json');
   assert.equal(connection.invalid, 2);
   assert.deepEqual(events, ['up']);
+});
+
+test('the unicast probe only trusts the answer of the typed IP', async () => {
+  const printer = new FakePrinter();
+  const fakeUdp = (answers) => () => {
+    const socket = new EventEmitter();
+    socket.close = () => {};
+    socket.send = (data, port, host, done) => {
+      assert.equal(String(data), 'M99999');
+      assert.equal(port, 3000);
+      done();
+      for (const [from, text] of answers) {
+        queueMicrotask(() => socket.emit('message', Buffer.from(text), { address: from }));
+      }
+    };
+    return socket;
+  };
+  const reply = printer.discoveryReply();
+  assert.equal(
+    (await probe('192.168.1.50', { create: fakeUdp([['192.168.1.50', reply]]) })).mainboardId,
+    RESIN_ID,
+  );
+  assert.equal(
+    await probe('192.168.1.50', { timeout: 20, create: fakeUdp([['192.168.1.66', reply]]) }),
+    undefined,
+    'another machine answering',
+  );
+  assert.equal(
+    (await probe('192.168.1.50', { create: fakeUdp([['::ffff:192.168.1.50', reply]]) }))
+      .mainboardId,
+    RESIN_ID,
+  );
 });
 
 test('stop: no reconnection', async () => {

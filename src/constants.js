@@ -50,6 +50,9 @@ export const CMD = {
   RESUME: 131,
 };
 
+/** The only commands a connection ever sends (src/sdcp/connection.js checks it). */
+export const ALLOWED_CMDS = new Set(Object.values(CMD));
+
 /** The control command of each scene action command. */
 export const CONTROL_CMD = {
   pause: CMD.PAUSE,
@@ -104,11 +107,23 @@ export const TIMINGS = {
   /** The acknowledgement of a control command is awaited at most this long. */
   commandAck: 5_000,
   /**
-   * A control command is never sent later than this after the scene reached
-   * it, so that its answer still fits the declared `timeout_seconds` (15 s):
-   * a command is refused before acting, never sent after the failure shown.
+   * A control command must be answered within this much after the scene
+   * reached the action (the ack wait included), or it is refused before
+   * acting: never sent after the failure shown. The core starts the declared
+   * `timeout_seconds` (30 s) when the scene enters the action, and that count
+   * includes up to 15 s of waiting for the integration's connection
+   * (runSceneAction.js, MESSAGE_CONNECTION_WAIT_MS): 15 s + 12 s + 2 s margin
+   * fit in 30 s (checked by test/manifest.test.js).
    */
   controlBudget: 12_000,
+  /** The core waits this long for the integration's connection within a scene action. */
+  sceneConnectionWait: 15_000,
+  /** The Discovery tab is republished at most this often (bursts are merged). */
+  publishDelay: 1_000,
+  /** A search younger than this is reused: the core allows one scan per 10 s. */
+  discoveryReuse: 10_000,
+  /** The same error code fires "print error" once per job, or once in this time. */
+  errorRepeat: 10 * 60_000,
 };
 
 /** Configuration bounds (mirrored by the manifest). */

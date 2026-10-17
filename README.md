@@ -2,7 +2,8 @@
 
 [Gladys Assistant](https://gladysassistant.com) external integration for
 **Elegoo 3D printers** that speak SDCP V3 on the local network: resin (Saturn
-3 / 4 Ultra, Mars 5 Ultra) and FDM (Centauri Carbon). Print state, progress,
+4 Ultra and 16K, Mars 5 Ultra) and FDM (Centauri Carbon); the Saturn 3 Ultra
+speaks SDCP V1 over MQTT and is not supported. Print state, progress,
 layers, times, file, temperatures and fans become Gladys devices; scene
 triggers fire when a print finishes, fails or is paused; a scene action can
 pause, resume or stop a print, off by default. No Elegoo cloud. Unofficial,

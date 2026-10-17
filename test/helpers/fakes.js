@@ -146,7 +146,7 @@ export class FakePrinter {
   received(text) {
     if (text === 'ping') {
       this.requests.push('ping');
-      if (!this.silent) queueMicrotask(() => this.push('pong'));
+      if (!this.silent && this.textPong !== false) queueMicrotask(() => this.push('pong'));
       return;
     }
     const request = JSON.parse(text);
@@ -263,6 +263,12 @@ export class FakeSocket extends EventEmitter {
   send(text) {
     this.sent.push(text);
     this.printer?.received(text);
+  }
+
+  /** WebSocket ping frame: answered by a pong frame unless the printer is silent. */
+  ping() {
+    this.pings = (this.pings ?? 0) + 1;
+    if (!this.printer?.silent) queueMicrotask(() => this.emit('pong'));
   }
 
   terminate() {

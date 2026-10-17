@@ -143,7 +143,13 @@ export function parseDiscovery(datagram) {
   if (!isObject(body) || !isObject(body.Data)) {
     return undefined;
   }
-  return parseIdentity(body.Data, body.Id);
+  // Older firmware nests the fields under Data.Attributes.
+  return parseIdentity(isObject(body.Data.Attributes) ? body.Data.Attributes : body.Data, body.Id);
+}
+
+/** SDCP V1 printers speak MQTT, not the WebSocket of V3: not supported. */
+export function isSdcpV1(identity) {
+  return /^v?1(\.|$)/i.test(identity?.protocol ?? '');
 }
 
 /** The attributes frame -> identity, or undefined. */

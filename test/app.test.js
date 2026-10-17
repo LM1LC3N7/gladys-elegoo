@@ -71,6 +71,7 @@ async function setup(
         return socket;
       },
     });
+  currentClock = clock;
   registerHandlers(gladys, app, logger);
   await gladys.connect();
   await settle();
@@ -78,9 +79,16 @@ async function setup(
   return { gladys, app, clock, logs, sockets, probes, printers, store };
 }
 
+/** The clock of the last setup: settle() lets the merged Discovery publication through. */
+let currentClock;
+
 const settle = async () => {
   for (let i = 0; i < 5; i += 1) await flush();
+  await currentClock?.advance(TIMINGS.publishDelay);
+  for (let i = 0; i < 5; i += 1) await flush();
 };
+
+const published = (gladys) => gladys.fake.bodies('POST', '/discovered_device').length;
 
 async function createAll(gladys) {
   for (const device of gladys.fake.discoveredDevices) {
@@ -167,6 +175,54 @@ test('scene triggers: paused, finished (once per job), error; only on changes', 
   });
   await settle();
   assert.equal(gladys.fake.sceneEvents.at(-1).data.error_code, 1);
+  // The same error again: no second event (once per job, or per 10 minutes).
+  const count = gladys.fake.sceneEvents.length;
+  printer.push({
+    Id: printer.connectionId,
+    Data: { Data: { ErrorCode: '1' }, MainboardID: RESIN_ID, TimeStamp: 2 },
+    Topic: `sdcp/error/${RESIN_ID}`,
+  });
+  await settle();
+  assert.equal(gladys.fake.sceneEvents.length, count);
+});
+
+test('a reconnection to Gladys (core restarted) publishes the Discovery tab and status again', async (t) => {
+  const { gladys } = await setup(t);
+  const devices = published(gladys);
+  const statuses = gladys.fake.connectionStatuses.length;
+  assert.ok(devices >= 1);
+  await gladys.disconnect();
+  await gladys.connect();
+  await settle();
+  assert.equal(published(gladys), devices + 1);
+  assert.equal(gladys.fake.connectionStatuses.length, statuses + 1);
+});
+
+test('one socket, one printer: frames of another board are ignored once identified', async (t) => {
+  const { gladys, app, printers, logs } = await setup(t);
+  const intruder = new FakePrinter({ id: FDM_ID, model: 'Centauri Carbon', status: fdmStatus() });
+  printers['192.168.1.50'].push(intruder.statusFrame());
+  printers['192.168.1.50'].push(intruder.attributesFrame());
+  await settle();
+  assert.ok(logs.some((l) => /frames of board .* ignored/.test(l)));
+  assert.equal(app.printerOf(FDM_ID), undefined);
+  assert.equal(app.printerOf(RESIN_ID).address, '192.168.1.50');
+  assert.deepEqual(
+    gladys.fake.discoveredDevices.map((d) => d.external_id),
+    [id(RESIN_ID)],
+  );
+});
+
+test('an SDCP V1 printer (Saturn 3 Ultra): recognised, no WebSocket, said in the status', async (t) => {
+  const printer = new FakePrinter({ id: 'aabbccdd', model: 'ELEGOO Saturn 3 Ultra' });
+  printer.identity = () => ({
+    ...FakePrinter.prototype.identity.call(printer),
+    protocol: 'V1.0.0',
+  });
+  const { gladys, sockets } = await setup(t, { printers: { '192.168.1.50': printer } });
+  assert.ok(sockets.every((s) => s.closed));
+  assert.equal(gladys.fake.discoveredDevices.length, 0);
+  assert.match(gladys.fake.connectionStatus.message.en, /SDCP V1 \(MQTT\).*192\.168\.1\.50/);
 });
 
 test('a reconnection: the first status is a baseline, nothing fires', async (t) => {
@@ -272,6 +328,79 @@ test('print control: no answer to the command is reported as such', async (t) =>
   await assert.rejects(pending, /did not confirm the command in time/);
 });
 
+test('print control: a queued command with no time left is refused before acting', async (t) => {
+  const { gladys, clock, printers, app } = await setup(t, {
+    config: { addresses: '192.168.1.50', allow_print_control: true, language: 'en' },
+  });
+  await createAll(gladys);
+  const printer = printers['192.168.1.50'];
+  const original = printer.received.bind(printer);
+  printer.received = (text) => {
+    if (text !== 'ping' && JSON.parse(text).Data.Cmd === CMD.STOP) {
+      printer.requests.push(JSON.parse(text));
+      return;
+    }
+    original(text);
+  };
+  const first = app.control({ device: id(RESIN_ID), command: 'stop' });
+  const second = app.control({ device: id(RESIN_ID), command: 'stop' });
+  first.catch(() => {});
+  second.catch(() => {});
+  await settle();
+  const statusRequests = printer.commands().filter((c) => c === CMD.STATUS).length;
+  await clock.advance(TIMINGS.commandAck);
+  await assert.rejects(first, /did not confirm/);
+  await assert.rejects(second, /No time left/);
+  assert.equal(printer.commands().filter((c) => c === CMD.STOP).length, 1, 'sent once');
+  assert.equal(
+    printer.commands().filter((c) => c === CMD.STATUS).length,
+    statusRequests,
+    'not even a fresh read',
+  );
+});
+
+test('print control: turned off while a command waited, it is not sent', async (t) => {
+  const { gladys, printers, app } = await setup(t, {
+    config: { addresses: '192.168.1.50', allow_print_control: true, language: 'en' },
+  });
+  await createAll(gladys);
+  const pending = app.control({ device: id(RESIN_ID), command: 'pause' });
+  pending.catch(() => {});
+  app.config = { ...app.config, allowPrintControl: false };
+  await assert.rejects(pending, /off/);
+  assert.ok(!printers['192.168.1.50'].commands().includes(CMD.PAUSE));
+});
+
+test('print control: an answer without Ack may have been applied', async (t) => {
+  const { gladys, printers, app } = await setup(t, {
+    config: { addresses: '192.168.1.50', allow_print_control: true, language: 'en' },
+  });
+  await createAll(gladys);
+  printers['192.168.1.50'].acks[CMD.PAUSE] = undefined;
+  const printer = printers['192.168.1.50'];
+  const original = printer.received.bind(printer);
+  printer.received = (text) => {
+    const request = text === 'ping' ? undefined : JSON.parse(text);
+    if (request?.Data.Cmd !== CMD.PAUSE) return original(text);
+    printer.requests.push(request);
+    queueMicrotask(() =>
+      printer.push({
+        Data: {
+          Cmd: CMD.PAUSE,
+          Data: {},
+          RequestID: request.Data.RequestID,
+          MainboardID: RESIN_ID,
+        },
+        Topic: `sdcp/response/${RESIN_ID}`,
+      }),
+    );
+  };
+  await assert.rejects(
+    app.control({ device: id(RESIN_ID), command: 'pause' }),
+    /may have been applied/,
+  );
+});
+
 test('print control: an offline printer gets nothing', async (t) => {
   const { gladys, sockets, app } = await setup(t, {
     config: { addresses: '192.168.1.50', allow_print_control: true, language: 'en' },
@@ -289,7 +418,7 @@ test('"Find the printers": the SDCP broadcast through the core', async (t) => {
     ip: '192.168.1.60',
     status: fdmStatus(),
   });
-  const { gladys, probes } = await setup(t, {
+  const { gladys, probes, logs, sockets } = await setup(t, {
     config: {},
     printers: { '192.168.1.60': found },
     scanResults: {
@@ -304,6 +433,14 @@ test('"Find the printers": the SDCP broadcast through the core', async (t) => {
           source_port: 3000,
           payload_base64: Buffer.from('garbage').toString('base64'),
         },
+        {
+          // The same address answering as a second board: ignored.
+          source_ip: '192.168.1.60',
+          source_port: 3000,
+          payload_base64: Buffer.from(
+            new FakePrinter({ id: 'ffff0000' }).discoveryReply(),
+          ).toString('base64'),
+        },
       ],
     },
   });
@@ -314,9 +451,23 @@ test('"Find the printers": the SDCP broadcast through the core', async (t) => {
   assert.equal(scan.type, 'udp-active-broadcast');
   assert.equal(scan.port, 3000);
   assert.equal(Buffer.from(scan.payload_base64, 'base64').toString(), 'M99999');
+  assert.doesNotMatch(ack.data.message.en, /ffff0000|Saturn/);
   await settle();
   assert.deepEqual(probes, [], 'identified by the search');
-  assert.equal(gladys.fake.discoveredDevices[0].external_id, id(FDM_ID));
+  assert.deepEqual(
+    gladys.fake.discoveredDevices.map((d) => d.external_id),
+    [id(FDM_ID)],
+  );
+  assert.ok(logs.some((l) => /answered the search as several printers/.test(l)));
+  // Seen once: in the Discovery tab, its connection released until created.
+  assert.ok(sockets.every((s) => s.closed));
+  await createAll(gladys);
+  await settle();
+  assert.equal(sockets.filter((s) => !s.closed).length, 1, 'connected again once created');
+  // A second search within 10 s reuses the first (the core allows one per 10 s).
+  const again = await gladys.fake.action('find_printers');
+  assert.match(again.data.message.en, /192\.168\.1\.60/);
+  assert.equal(gladys.fake.scans.length, 1);
 });
 
 test('known printers are kept in /data; a deleted device is forgotten', async (t) => {

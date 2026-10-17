@@ -19,12 +19,13 @@ Intégration non officielle, sans lien avec Elegoo.
 Les imprimantes Elegoo qui parlent **SDCP V3** par une WebSocket locale
 (port 3030) :
 
-- résine : Saturn 3 Ultra, Saturn 4 Ultra, Mars 5 Ultra (et les autres
+- résine : Saturn 4 Ultra, Saturn 4 Ultra 16K, Mars 5 Ultra (et les autres
   Saturn / Mars SDCP V3) ;
 - FDM : Centauri Carbon.
 
-Non prises en charge : la Centauri Carbon 2 (autre protocole), les anciennes
-imprimantes en SDCP V1 par MQTT, et les imprimantes sans réseau.
+Non prises en charge : la Saturn 3 Ultra et les autres imprimantes en SDCP V1
+par MQTT (l'intégration les reconnaît et le signale dans son état), la
+Centauri Carbon 2 (autre protocole), et les imprimantes sans réseau.
 
 ## Mise en place
 
@@ -110,9 +111,9 @@ Règles de sécurité :
   attendant un peu plus à chaque fois (jusqu'à 5 minutes).
 - **La recherche ne trouve rien** : saisissez les adresses ; la découverte
   dépend du réseau entre Gladys et les imprimantes.
-- **Une imprimante a changé d'adresse** : saisissez la nouvelle ;
-  l'imprimante est reconnue par l'identifiant de sa carte, son appareil et
-  son historique sont gardés.
+- **Une imprimante a changé d'adresse** : remplacez l'ancienne adresse par
+  la nouvelle dans la configuration ; l'imprimante est reconnue par
+  l'identifiant de sa carte, son appareil et son historique sont gardés.
 - Pour oublier une imprimante, retirez son adresse et supprimez son appareil.
 
 ## Confidentialité

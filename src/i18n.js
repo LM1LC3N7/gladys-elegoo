@@ -119,6 +119,10 @@ export const T = {
     en: `No answer yet from: ${list(hosts)} (printer off, wrong address, or its connections all taken).`,
     fr: `Pas encore de réponse de : ${list(hosts)} (imprimante éteinte, mauvaise adresse, ou toutes ses connexions prises).`,
   }),
+  sdcpV1: (hosts) => ({
+    en: `SDCP V1 (MQTT) printer(s), not supported: ${list(hosts)}.`,
+    fr: `Imprimante(s) SDCP V1 (MQTT), non prise(s) en charge : ${list(hosts)}.`,
+  }),
   invalidAddresses: (entries) => ({
     en: `Invalid address(es) ignored: ${list(entries)}.`,
     fr: `Adresse(s) invalide(s) ignorée(s) : ${list(entries)}.`,

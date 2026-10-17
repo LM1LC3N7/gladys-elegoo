@@ -13,7 +13,7 @@ the notes of the version's GitHub Release.
 ### Added
 
 - Elegoo SDCP V3 printers on the local network, without the cloud: resin
-  (Saturn 3 / 4 Ultra, Mars 5 Ultra) and FDM (Centauri Carbon), added by IP
+  (Saturn 4 Ultra and 16K, Mars 5 Ultra) and FDM (Centauri Carbon), added by IP
   address or found by the "Find the printers" search (through Gladys), and
   recognised by their board id when their address changes.
 - Print state, machine state, progress, current and total layers, time
@@ -26,6 +26,8 @@ the notes of the version's GitHub Release.
   axis move.
 - A WebSocket per printer with the SDCP heartbeat, a watchdog, reconnection
   with growing delays (up to 5 minutes), bounded and validated messages.
+- SDCP V1 printers (Saturn 3 Ultra, MQTT) are recognised and named as not
+  supported in the status, without a connection attempt.
 - Reachability on the transport badge, states within the Gladys rate limit,
   temperatures and fans spaced by a minute.
 

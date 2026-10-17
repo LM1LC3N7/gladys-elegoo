@@ -42,6 +42,7 @@ import {
   parseAttributes,
   parseDiscovery,
   parseErrorFrame,
+  isSdcpV1,
   parseStatus,
   printerTypeOf,
 } from './sdcp/protocol.js';
@@ -94,8 +95,14 @@ export class ElegooApp {
     /** deviceId -> transport badge last published */
     this.transports = new Map();
     this.eventWindow = [];
+    /** printer id -> { code, taskId, at } of the last "print error" event */
+    this.lastErrors = new Map();
     this.lastDevices = undefined;
     this.lastStatus = undefined;
+    this.publishTimer = undefined;
+    this.lastPublishAt = -Infinity;
+    /** { at, found } the last search, reused for 10 s */
+    this.lastDiscovery = undefined;
     this.refreshTimer = undefined;
     this.persistTimer = undefined;
     this.warned = new Set();
@@ -109,16 +116,16 @@ export class ElegooApp {
     if (!this.data) {
       this.data = await this.store.load().catch(() => emptyData());
     }
-    const previous = this.config;
     this.config = normalizeConfig(raw);
     this.started = true;
     this.refreshCreated();
     this.publisher.start();
     this.syncConnections();
     this.schedule();
-    if (previous.language !== this.config.language) {
-      this.lastDevices = undefined;
-    }
+    // A (re)connection to Gladys may follow a restart of the core: the
+    // Discovery tab and the status are published again, never assumed kept.
+    this.lastDevices = undefined;
+    this.lastStatus = undefined;
     await this.publishDevices();
     this.transports.clear();
     await this.publishAllTransports();
@@ -130,6 +137,8 @@ export class ElegooApp {
     this.publisher.stop();
     this.timers.clearInterval(this.refreshTimer);
     this.refreshTimer = undefined;
+    this.timers.clearTimeout(this.publishTimer);
+    this.publishTimer = undefined;
     for (const entry of this.hosts.values()) {
       entry.connection.stop();
     }
@@ -153,6 +162,9 @@ export class ElegooApp {
   /** One timer round: a status refresh of each printer, a probe of the unidentified addresses. */
   tick() {
     for (const entry of this.hosts.values()) {
+      if (entry.duplicate || entry.unsupported) {
+        continue;
+      }
       if (entry.connection.connected && entry.connection.identity) {
         entry.connection.refresh();
       } else if (!entry.connection.identity) {
@@ -185,6 +197,12 @@ export class ElegooApp {
     return Object.values(this.data?.printers ?? {});
   }
 
+  /** The known printer of a board id (own keys only). */
+  printerOf(id) {
+    const printers = this.data?.printers;
+    return printers && Object.hasOwn(printers, id) ? printers[id] : undefined;
+  }
+
   // --- Connections -----------------------------------------------------------
 
   /** The addresses to connect to: the typed ones and those of the known printers. */
@@ -192,8 +210,14 @@ export class ElegooApp {
     const hosts = new Set(this.config.addresses);
     const created = this.createdDevices();
     for (const record of this.records) {
-      // A printer found by the search, or whose device the user created.
-      if (record.address && (record.discovered || created.has(this.deviceIdOf(record.id)))) {
+      if (!record.address || record.unsupported) {
+        continue;
+      }
+      // A printer whose device the user created, or one found by the search
+      // until it sent its state once: then it waits in the Discovery tab
+      // without holding one of the few connections the printer accepts.
+      const isCreated = created.has(this.deviceIdOf(record.id));
+      if (isCreated || (record.discovered && !record.seen)) {
         hosts.add(record.address);
       }
     }
@@ -222,9 +246,13 @@ export class ElegooApp {
       now: this.now,
       logger: this.logger,
     });
-    const entry = { host, connection, lastProbe: -Infinity, probing: undefined };
+    const entry = { host, connection, lastProbe: -Infinity, probing: undefined, verified: false };
     this.hosts.set(host, entry);
     const record = this.records.find((r) => r.address === host);
+    if (record?.unsupported) {
+      entry.unsupported = true;
+      return;
+    }
     if (record) {
       connection.setIdentity({ mainboardId: record.id, connectionId: record.connectionId ?? '' });
     }
@@ -257,6 +285,8 @@ export class ElegooApp {
   }
 
   onUp(entry) {
+    // A new socket: its first frame says which board answers at this address.
+    entry.verified = false;
     const id = entry.connection.identity?.mainboardId;
     // A new connection: the next status is a baseline for the events.
     if (id) {
@@ -272,6 +302,15 @@ export class ElegooApp {
     const id = entry.connection.identity?.mainboardId;
     if (id) {
       this.baselines.delete(id);
+      // A second address of this printer, stopped while this one was up: it may take over.
+      for (const other of this.hosts.values()) {
+        if (other.duplicate && other.duplicateOf === id) {
+          this.logger.info(`${entry.host} lost: trying ${other.host} for printer ${id}`);
+          other.duplicate = false;
+          other.duplicateOf = undefined;
+          other.connection.start();
+        }
+      }
     }
     if (wasUp) {
       this.connectionChanged(id);
@@ -294,14 +333,28 @@ export class ElegooApp {
    * Another printer known at this address has moved: its address is freed.
    */
   adopt(entry, identity) {
+    if (isSdcpV1(identity)) {
+      // SDCP V1 printers (Saturn 3 Ultra...) speak MQTT: no WebSocket to open.
+      this.remember({ ...identity, unsupported: true }, entry.host);
+      this.warnOnce(
+        `v1:${entry.host}`,
+        `${entry.host} is an SDCP V1 (MQTT) printer: not supported`,
+      );
+      entry.unsupported = true;
+      entry.connection.stop();
+      this.updateStatus();
+      return;
+    }
     if (this.isDuplicate(entry.host, identity.mainboardId)) {
       // Two addresses for one printer (a typed name and a found IP...): one
-      // connection is enough, the printer accepts only a few.
+      // connection is enough, the printer accepts only a few. This one starts
+      // again if the other one is lost.
       this.warnOnce(
         `duplicate:${entry.host}`,
         `${entry.host} is printer ${identity.mainboardId}, already connected at another address: ignored`,
       );
       entry.duplicate = true;
+      entry.duplicateOf = identity.mainboardId;
       entry.connection.stop();
       this.updateStatus();
       return;
@@ -310,20 +363,24 @@ export class ElegooApp {
     const previous = entry.connection.identity?.mainboardId;
     entry.connection.setIdentity({
       mainboardId: identity.mainboardId,
-      connectionId: this.data.printers[identity.mainboardId]?.connectionId ?? '',
+      connectionId: this.printerOf(identity.mainboardId)?.connectionId ?? '',
     });
     if (previous !== identity.mainboardId && entry.connection.connected) {
       this.baselines.delete(identity.mainboardId);
       entry.connection.refresh({ attributes: true });
     }
     if (changed) {
-      this.publishDevices().catch(() => {});
+      this.publishSoon();
+      // A printer that left an address, or moved: the connections follow.
+      queueMicrotask(() => {
+        if (this.started) this.syncConnections();
+      });
     }
   }
 
   /** True when printer `id` is known at another address whose connection is up. */
   isDuplicate(host, id) {
-    const existing = this.data.printers[id];
+    const existing = this.printerOf(id);
     if (!existing?.address || existing.address === host) {
       return false;
     }
@@ -334,7 +391,7 @@ export class ElegooApp {
   /** Adds or updates a known printer; true when its Gladys device changes. */
   remember(identity, host, { discovered = false } = {}) {
     const printers = this.data.printers;
-    const existing = printers[identity.mainboardId];
+    const existing = this.printerOf(identity.mainboardId);
     if (!existing && Object.keys(printers).length >= LIMITS.printers) {
       this.warnOnce('printers', `More than ${LIMITS.printers} printers: the next ones are ignored`);
       return false;
@@ -359,7 +416,11 @@ export class ElegooApp {
       type: printerTypeOf(model) ?? existing?.type ?? '',
       address: host,
       discovered: Boolean(existing?.discovered || discovered),
+      unsupported: Boolean(identity.unsupported || existing?.unsupported),
     };
+    if (!record.unsupported) {
+      delete record.unsupported;
+    }
     if (JSON.stringify(existing) === JSON.stringify(record)) {
       return false;
     }
@@ -374,17 +435,32 @@ export class ElegooApp {
   // --- Messages from the printers -----------------------------------------------
 
   onMessage(entry, message) {
+    const board = message.mainboardId;
     const known = entry.connection.identity?.mainboardId;
-    if (known !== message.mainboardId) {
-      // No identity yet (no UDP answer), or another printer at this address.
-      if (known) {
-        this.logger.warn(
-          `${entry.host}: frames of board ${message.mainboardId}, ${known} expected`,
-        );
+    if (!entry.verified) {
+      // The first frame of a new socket says which printer answers here: no
+      // identity yet (no UDP answer), another printer took the address, or
+      // this printer is already connected at another address.
+      if (known !== board || this.printerOf(board)?.address !== entry.host) {
+        if (known && known !== board) {
+          this.logger.warn(`${entry.host}: frames of board ${board}, ${known} expected`);
+        }
+        this.adopt(entry, { mainboardId: board, connectionId: '' });
+        if (entry.duplicate || entry.unsupported) {
+          return;
+        }
       }
-      this.adopt(entry, { mainboardId: message.mainboardId, connectionId: '' });
+      entry.verified = true;
+    } else if (board !== known) {
+      // Several boards on one socket (a proxy, a hostile device): the socket
+      // keeps the printer of its first frame, the others are ignored.
+      this.warnOnce(
+        `foreign:${entry.host}:${board}`,
+        `${entry.host}: frames of board ${board} ignored, this connection is printer ${known}`,
+      );
+      return;
     }
-    const record = this.data.printers[message.mainboardId];
+    const record = this.printerOf(board);
     if (!record || record.address !== entry.host) {
       return;
     }
@@ -409,7 +485,7 @@ export class ElegooApp {
       return;
     }
     if (this.remember({ ...identity, connectionId: '' }, entry.host)) {
-      this.publishDevices().catch(() => {});
+      this.publishSoon();
     }
   }
 
@@ -445,13 +521,22 @@ export class ElegooApp {
       record.caps = caps;
       changed = true;
     }
+    let firstSeen = false;
     if (!record.seen) {
       record.seen = true;
       changed = true;
+      firstSeen = true;
     }
     if (changed) {
       this.persist();
-      this.publishDevices().catch(() => {});
+      this.publishSoon();
+    }
+    if (firstSeen && record.discovered) {
+      // Found by the search and now in the Discovery tab: its connection is
+      // released until the user creates its device (src/app.js wantedHosts).
+      queueMicrotask(() => {
+        if (this.started) this.syncConnections();
+      });
     }
 
     const previous = this.baselines.get(record.id);
@@ -480,6 +565,9 @@ export class ElegooApp {
     if (current) {
       this.recordValues(record, statusValues(record, current, this.config.language, { code }));
     }
+    if (this.repeatedError(record, `frame:${code}`, current?.taskId)) {
+      return;
+    }
     this.fireEvent(record, SCENE_TRIGGERS.ERROR, {
       file: current?.file ?? '',
       error_code: code,
@@ -499,8 +587,29 @@ export class ElegooApp {
     if (key === SCENE_TRIGGERS.ERROR) {
       data.error_code = status.errorNumber > 0 ? status.errorNumber : -1;
       data.error = word(printErrorText(status.errorNumber ?? 0, 'error'), this.config.language);
+      if (this.repeatedError(record, `print:${data.error_code}`, status.taskId)) {
+        return;
+      }
     }
     this.fireEvent(record, key, data);
+  }
+
+  /**
+   * True when the same error was already reported for this job, or within
+   * TIMINGS.errorRepeat: a printer flapping in and out of an error fires the
+   * "print error" trigger once.
+   */
+  repeatedError(record, code, taskId) {
+    const last = this.lastErrors.get(record.id);
+    const time = this.now();
+    if (
+      last?.code === code &&
+      ((taskId && last.taskId === taskId) || time - last.at < TIMINGS.errorRepeat)
+    ) {
+      return true;
+    }
+    this.lastErrors.set(record.id, { code, taskId, at: time });
+    return false;
   }
 
   fireEvent(record, key, data) {
@@ -543,7 +652,23 @@ export class ElegooApp {
     return this.records.filter((record) => record.seen);
   }
 
+  /**
+   * Publishes the Discovery tab soon: the changes of a burst of frames are
+   * merged, and it is published at most once per TIMINGS.publishDelay.
+   */
+  publishSoon() {
+    if (this.publishTimer) {
+      return;
+    }
+    const wait = Math.max(0, this.lastPublishAt + TIMINGS.publishDelay - this.now());
+    this.publishTimer = this.timers.setTimeout(() => {
+      this.publishTimer = undefined;
+      this.publishDevices().catch(() => {});
+    }, wait);
+  }
+
   async publishDevices() {
+    this.lastPublishAt = this.now();
     const records = this.visibleRecords();
     const devices = records.map((record) => buildDevice(this.gladys, record, this.config.language));
     const measures = new Set();
@@ -578,6 +703,8 @@ export class ElegooApp {
 
   async deviceCreated(device) {
     this.refreshCreated();
+    // A printer found by the search is connected again once its device exists.
+    this.syncConnections();
     this.transports.delete(device?.external_id);
     for (const feature of device?.features ?? []) {
       const value = this.lastValues.get(feature.external_id);
@@ -661,11 +788,17 @@ export class ElegooApp {
     if (!this.started) {
       return;
     }
-    const hosts = [...this.hosts.values()].filter((entry) => !entry.duplicate);
+    const hosts = [...this.hosts.values()].filter((e) => !e.duplicate && !e.unsupported);
     const up = hosts.filter((entry) => entry.connection.connected);
+    const unsupported = new Set([
+      ...[...this.hosts.values()].filter((e) => e.unsupported).map((e) => e.host),
+      ...this.records.filter((r) => r.unsupported && r.address).map((r) => r.address),
+    ]);
     const parts = [];
     let connected;
-    if (hosts.length === 0) {
+    if (hosts.length === 0 && unsupported.size > 0) {
+      connected = false;
+    } else if (hosts.length === 0) {
       connected = false;
       parts.push(T.noPrinter);
     } else {
@@ -675,6 +808,9 @@ export class ElegooApp {
       if (down.length > 0) {
         parts.push(T.waiting(down));
       }
+    }
+    if (unsupported.size > 0) {
+      parts.push(T.sdcpV1([...unsupported]));
     }
     if (this.config.invalidAddresses.length > 0) {
       parts.push(T.invalidAddresses(this.config.invalidAddresses));
@@ -697,10 +833,20 @@ export class ElegooApp {
 
   /** The SDCP broadcast sent by the Gladys core; the answers become known printers. */
   discover() {
+    // The core allows one scan per 10 s: a recent result is shown again
+    // rather than its "too many requests".
+    if (this.lastDiscovery && this.now() - this.lastDiscovery.at < TIMINGS.discoveryReuse) {
+      return Promise.resolve(this.lastDiscovery.found);
+    }
     if (!this.discovering) {
-      this.discovering = this.doDiscover().finally(() => {
-        this.discovering = undefined;
-      });
+      this.discovering = this.doDiscover()
+        .then((found) => {
+          this.lastDiscovery = { at: this.now(), found };
+          return found;
+        })
+        .finally(() => {
+          this.discovering = undefined;
+        });
     }
     return this.discovering;
   }
@@ -712,6 +858,7 @@ export class ElegooApp {
       timeoutSeconds: TIMINGS.scanSeconds,
     });
     const found = new Map();
+    const sources = new Map();
     for (const reply of Array.isArray(replies) ? replies : []) {
       if (typeof reply?.payload_base64 !== 'string' || typeof reply.source_ip !== 'string') {
         continue;
@@ -719,14 +866,29 @@ export class ElegooApp {
       const identity = parseDiscovery(Buffer.from(reply.payload_base64, 'base64'));
       // The address that answered, rather than the one the printer says it has.
       const host = reply.source_ip.replace(/^::ffff:/, '');
-      if (identity && !found.has(identity.mainboardId)) {
-        found.set(identity.mainboardId, { ...identity, host });
+      if (!identity || found.has(identity.mainboardId)) {
+        continue;
       }
+      // One address, one printer: a proxy or a hostile device answering for
+      // several boards only gets its first one.
+      if (sources.has(host)) {
+        this.warnOnce(
+          `sources:${host}:${identity.mainboardId}`,
+          `${host} answered the search as several printers: only ${sources.get(host)} is kept`,
+        );
+        continue;
+      }
+      sources.set(host, identity.mainboardId);
+      found.set(identity.mainboardId, { ...identity, host });
     }
     for (const identity of found.values()) {
+      if (isSdcpV1(identity)) {
+        this.remember({ ...identity, unsupported: true }, identity.host);
+        continue;
+      }
       if (this.isDuplicate(identity.host, identity.mainboardId)) {
         // Already connected under another address: only its details are updated.
-        this.remember(identity, this.data.printers[identity.mainboardId].address);
+        this.remember(identity, this.printerOf(identity.mainboardId).address);
         continue;
       }
       this.remember(identity, identity.host, { discovered: true });
@@ -758,7 +920,9 @@ export class ElegooApp {
     }
     return T.find.found(
       found.map(
-        (p) => `${p.name || p.model || 'Elegoo'} ${p.model ? `(${p.model}) ` : ''}${p.host}`,
+        (p) =>
+          `${p.name || p.model || 'Elegoo'} ${p.model ? `(${p.model}) ` : ''}${p.host}` +
+          (isSdcpV1(p) ? ' [SDCP V1]' : ''),
       ),
     );
   }
@@ -800,9 +964,18 @@ export class ElegooApp {
     const fail = (text) => {
       throw new LocalizedError(text, this.config.language);
     };
+    // Checked again here: the option may have been turned off while this
+    // command waited behind another one.
+    if (!this.config.allowPrintControl) {
+      fail(T.control.disabled);
+    }
     const connection = this.connectionOf(record);
     if (!connection?.connected) {
       fail(T.control.offline(name));
+    }
+    // Not even the time to read the state and wait for the ack: refused now.
+    if (this.now() - start + TIMINGS.freshStatus + TIMINGS.commandAck > TIMINGS.controlBudget) {
+      fail(T.control.late(name));
     }
     const status = await this.freshStatus(record, connection);
     if (!status) {
@@ -819,9 +992,17 @@ export class ElegooApp {
     try {
       answer = await connection.request(CONTROL_CMD[command], {}, { timeout: TIMINGS.commandAck });
     } catch (err) {
-      fail(err.kind === 'timeout' ? T.control.noAnswer(name) : T.control.offline(name));
+      // Sent but unanswered (timeout, connection lost meanwhile): it may have been applied.
+      fail(
+        err.kind === 'timeout' || err.kind === 'lost'
+          ? T.control.noAnswer(name)
+          : T.control.offline(name),
+      );
     }
-    if (answer.ack !== undefined && answer.ack !== 0) {
+    if (answer.ack === undefined) {
+      fail(T.control.noAnswer(name));
+    }
+    if (answer.ack !== 0) {
       fail(T.control.refused(name, answer.ack));
     }
     connection.refresh();

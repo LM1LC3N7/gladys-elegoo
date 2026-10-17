@@ -22,8 +22,8 @@
         "fr": "Vos imprimantes Elegoo, sur votre réseau local"
       },
       "description": {
-        "en": "For the Elegoo printers that speak SDCP V3 on the local network: resin (Saturn 3 / 4 Ultra, Mars 5 Ultra) and FDM (Centauri Carbon). Gladys reads the print state, progress, layers, times, file name, temperatures and fans through the WebSocket of each printer (port 3030), without the Elegoo cloud. Give each printer a fixed IP address in your router and type it below: it is the reliable way. \"Find the printers\" may also find them. A printer accepts only a few connections at once (Elegoo app, slicer...). Never tested on a real printer yet. Unofficial, not affiliated with Elegoo.",
-        "fr": "Pour les imprimantes Elegoo qui parlent SDCP V3 sur le réseau local : résine (Saturn 3 / 4 Ultra, Mars 5 Ultra) et FDM (Centauri Carbon). Gladys lit l'état de l'impression, la progression, les couches, les temps, le nom du fichier, les températures et les ventilateurs par la WebSocket de chaque imprimante (port 3030), sans le cloud Elegoo. Donnez à chaque imprimante une adresse IP fixe dans votre box et saisissez-la ci-dessous : c'est le moyen fiable. « Chercher les imprimantes » peut aussi les trouver. Une imprimante n'accepte que quelques connexions à la fois (application Elegoo, trancheur...). Jamais testé sur une vraie imprimante pour l'instant. Non officiel, sans lien avec Elegoo."
+        "en": "For the Elegoo printers that speak SDCP V3 on the local network: resin (Saturn 4 Ultra and 16K, Mars 5 Ultra; not the Saturn 3 Ultra, SDCP V1) and FDM (Centauri Carbon). Gladys reads the print state, progress, layers, times, file name, temperatures and fans through the WebSocket of each printer (port 3030), without the Elegoo cloud. Give each printer a fixed IP address in your router and type it below: it is the reliable way. \"Find the printers\" may also find them. A printer accepts only a few connections at once (Elegoo app, slicer...). Never tested on a real printer yet. Unofficial, not affiliated with Elegoo.",
+        "fr": "Pour les imprimantes Elegoo qui parlent SDCP V3 sur le réseau local : résine (Saturn 4 Ultra et 16K, Mars 5 Ultra ; pas la Saturn 3 Ultra, SDCP V1) et FDM (Centauri Carbon). Gladys lit l'état de l'impression, la progression, les couches, les temps, le nom du fichier, les températures et les ventilateurs par la WebSocket de chaque imprimante (port 3030), sans le cloud Elegoo. Donnez à chaque imprimante une adresse IP fixe dans votre box et saisissez-la ci-dessous : c'est le moyen fiable. « Chercher les imprimantes » peut aussi les trouver. Une imprimante n'accepte que quelques connexions à la fois (application Elegoo, trancheur...). Jamais testé sur une vraie imprimante pour l'instant. Non officiel, sans lien avec Elegoo."
       },
       "links": [
         {
@@ -172,7 +172,7 @@
         "en": "Pauses, resumes or stops the current print: off unless allowed in the configuration.",
         "fr": "Met en pause, reprend ou arrête l'impression en cours : désactivé sauf autorisation dans la configuration."
       },
-      "timeout_seconds": 15,
+      "timeout_seconds": 30,
       "fields": [
         {
           "key": "device",

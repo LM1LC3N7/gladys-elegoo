@@ -11,7 +11,7 @@
 import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import WebSocket from 'ws';
-import { CMD, LIMITS, SDCP, TIMINGS } from '../constants.js';
+import { ALLOWED_CMDS, CMD, LIMITS, SDCP, TIMINGS } from '../constants.js';
 import { buildRequest, parseMessage, parseResponse } from './protocol.js';
 
 const silent = { debug() {}, info() {}, warn() {}, error() {} };
@@ -28,8 +28,8 @@ export class SdcpError extends Error {
 export const socketUrl = (host) =>
   `ws://${host.includes(':') ? `[${host}]` : host}:${SDCP.wsPort}${SDCP.wsPath}`;
 
-export function createWebSocket(url) {
-  return new WebSocket(url, {
+export function createWebSocket(url, Socket = WebSocket) {
+  return new Socket(url, {
     // A message larger than this closes the connection (code 1009) before it is buffered.
     maxPayload: LIMITS.messageBytes,
     handshakeTimeout: TIMINGS.connectTimeout,
@@ -125,6 +125,11 @@ export class PrinterConnection extends EventEmitter {
     socket.on('message', (data, isBinary) => {
       if (generation === this.generation) this.received(data, isBinary);
     });
+    // The WebSocket-level pong also proves the printer alive (a firmware
+    // that does not answer the SDCP "ping" text still answers a ping frame).
+    socket.on('pong', () => {
+      if (generation === this.generation) this.lastReceived = this.now();
+    });
     socket.on('error', (err) => this.lost(generation, err?.code ?? err?.message ?? 'error'));
     socket.on('close', (code) => this.lost(generation, `connection closed (${code ?? '-'})`));
   }
@@ -153,7 +158,8 @@ export class PrinterConnection extends EventEmitter {
     }
     for (const [, waiter] of this.pending) {
       this.timers.clearTimeout(waiter.timer);
-      waiter.reject(new SdcpError(`Connection to the printer lost (${reason})`, 'offline'));
+      // 'lost': the request went out, its answer did not come back.
+      waiter.reject(new SdcpError(`Connection to the printer lost (${reason})`, 'lost'));
     }
     this.pending.clear();
   }
@@ -186,6 +192,11 @@ export class PrinterConnection extends EventEmitter {
       return;
     }
     this.send(SDCP.ping);
+    try {
+      this.socket.ping?.();
+    } catch {
+      // Closing: the watchdog or the close event handles it.
+    }
   }
 
   received(data, isBinary) {
@@ -227,6 +238,10 @@ export class PrinterConnection extends EventEmitter {
    * within `timeout` ms.
    */
   request(cmd, data = {}, { timeout = TIMINGS.commandAck } = {}) {
+    // Status, attributes, pause, stop, resume: never a start, a move or a file command.
+    if (!ALLOWED_CMDS.has(cmd)) {
+      return Promise.reject(new SdcpError(`Command ${cmd} is not allowed`, 'forbidden'));
+    }
     if (!this.open) {
       return Promise.reject(new SdcpError('Not connected to the printer', 'offline'));
     }
