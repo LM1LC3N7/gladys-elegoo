@@ -16,7 +16,9 @@ function sanitize(data) {
     for (const id of Object.keys(data.printers)) {
       const record = data.printers[id];
       if (/^[0-9A-Za-z]{1,64}$/.test(id) && record && typeof record === 'object') {
-        base.printers[id] = { ...record, id, caps: Array.isArray(record.caps) ? record.caps : [] };
+        // eslint-disable-next-line no-unused-vars
+        const { unsupported, ...kept } = record; // SDCP V1 is never stored (src/app.js adopt)
+        base.printers[id] = { ...kept, id, caps: Array.isArray(record.caps) ? record.caps : [] };
       }
     }
   }

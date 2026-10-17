@@ -100,8 +100,9 @@ up to date at the end of every milestone.
   connection is a baseline, never an event); finished once per `TaskId`,
   only from an active phase; error on entering the error phase, a new
   `ErrorNumber`, or an error frame; paused on entering "paused". The same
-  error code fires once per job, or once in 10 minutes. Fired only for
-  created devices, at most 60 events a minute.
+  error code fires once per job; another known job always fires; the
+  10-minute window only applies when a job id is missing on either side.
+  Fired only for created devices, at most 60 events a minute.
 - Control: a scene action (not a feature), so no dashboard button can stop a
   print by a misclick; `allow_print_control` false by default, checked again
   when a queued command starts; one command at a time per printer; refused
@@ -119,8 +120,13 @@ up to date at the end of every milestone.
   129, 130 and 131: no start (`Cmd 128`), no axis command, no file command.
 - SDCP V1 printers (Saturn 3 Ultra, MQTT; elegoo-homeassistant README and
   its V1.0.0 fixture): recognised by `ProtocolVersion` V1 in the discovery
-  answer, no WebSocket opened, named in the status as not supported. Older
-  discovery answers nest the fields under `Data.Attributes`: both read.
+  answer, no WebSocket opened, named in the status as not supported. Kept in
+  memory only (never a known printer, never stored, no place among the 20):
+  a typed address is tried again at each configuration save or Gladys
+  reconnection, the status only names the V1 addresses still typed or found
+  by the last search, and a V1 answer is never believed for a socket that
+  already speaks V3. Older discovery answers nest the fields under
+  `Data.Attributes`: both read.
 - A Gladys reconnection (`connected`, possibly a restarted core) publishes
   the Discovery tab and the status again, whatever was sent before.
 - The Discovery tab is published at most once a second (bursts merged).

@@ -219,10 +219,68 @@ test('an SDCP V1 printer (Saturn 3 Ultra): recognised, no WebSocket, said in the
     ...FakePrinter.prototype.identity.call(printer),
     protocol: 'V1.0.0',
   });
-  const { gladys, sockets } = await setup(t, { printers: { '192.168.1.50': printer } });
+  const { gladys, sockets, probes, app, clock, store } = await setup(t, {
+    printers: { '192.168.1.50': printer },
+  });
   assert.ok(sockets.every((s) => s.closed));
   assert.equal(gladys.fake.discoveredDevices.length, 0);
   assert.match(gladys.fake.connectionStatus.message.en, /SDCP V1 \(MQTT\).*192\.168\.1\.50/);
+  // Never a known printer: no place taken, nothing stored.
+  assert.equal(app.records.length, 0);
+  await clock.advance(TIMINGS.persistDelay);
+  assert.deepEqual(Object.keys(store.data.printers), []);
+  // Saving the configuration tries the address again (one answer never blocks it).
+  await gladys.fake.configUpdated({ addresses: '192.168.1.50' });
+  await settle();
+  assert.equal(probes.length, 2);
+  // Address removed: the status no longer names it.
+  await gladys.fake.configUpdated({ addresses: '' });
+  await settle();
+  assert.doesNotMatch(gladys.fake.connectionStatus.message.en, /SDCP V1/);
+});
+
+test('an SDCP V1 search answer: never believed for a socket that speaks V3', async (t) => {
+  const v1 = new FakePrinter({ id: 'aabbccdd', model: 'ELEGOO Saturn 3 Ultra' });
+  const reply = JSON.parse(v1.discoveryReply());
+  reply.Data.ProtocolVersion = 'V1.0.0';
+  const { gladys, sockets, app } = await setup(t, {
+    scanResults: {
+      'udp-active-broadcast': [
+        {
+          source_ip: '192.168.1.50',
+          source_port: 3000,
+          payload_base64: Buffer.from(JSON.stringify(reply)).toString('base64'),
+        },
+      ],
+    },
+  });
+  await gladys.fake.action('find_printers');
+  await settle();
+  assert.equal(sockets.filter((s) => !s.closed).length, 1, 'the V3 connection stays');
+  assert.equal(app.printerOf('aabbccdd'), undefined);
+  assert.doesNotMatch(gladys.fake.connectionStatus.message.en, /SDCP V1/);
+});
+
+test('print error: the same code on another job fires again', async (t) => {
+  const { gladys, clock, printers } = await setup(t);
+  await createAll(gladys);
+  const printer = printers['192.168.1.50'];
+  printer.pushStatus({ PrintInfo: { ErrorNumber: 2, TaskId: 'job-1' } });
+  printer.pushStatus({ PrintInfo: { ErrorNumber: 0, TaskId: 'job-2' } });
+  await settle();
+  await clock.advance(5 * 60_000);
+  printer.pushStatus({ PrintInfo: { ErrorNumber: 2, TaskId: 'job-2' } });
+  // The same job flapping: no third event.
+  printer.pushStatus({ PrintInfo: { ErrorNumber: 0 } });
+  printer.pushStatus({ PrintInfo: { ErrorNumber: 2 } });
+  await settle();
+  assert.deepEqual(
+    gladys.fake.sceneEvents.map((e) => [e.key, e.data.error_code]),
+    [
+      ['print_error', 2],
+      ['print_error', 2],
+    ],
+  );
 });
 
 test('a reconnection: the first status is a baseline, nothing fires', async (t) => {
