@@ -1,147 +1,176 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "Elegoo 3D printers",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "Elegoo SDCP 3D printers (Saturn, Mars, Centauri Carbon): print state and temperatures, locally.",
+    "fr": "Imprimantes 3D Elegoo SDCP (Saturn, Mars, Centauri Carbon) : impression et températures, en local."
   },
-  "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
+  "version": "0.1.0",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-elegoo:0.1.0",
   "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-elegoo/main/cover.png",
+  "categories": ["appliances"],
+  "transports": ["local"],
+  "network_discovery": [{ "type": "udp-active-broadcast", "ports": [3000] }],
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": {
+        "en": "Your Elegoo printers, on your local network",
+        "fr": "Vos imprimantes Elegoo, sur votre réseau local"
+      },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "For the Elegoo printers that speak SDCP V3 on the local network: resin (Saturn 3 / 4 Ultra, Mars 5 Ultra) and FDM (Centauri Carbon). Gladys reads the print state, progress, layers, times, file name, temperatures and fans through the WebSocket of each printer (port 3030), without the Elegoo cloud. Give each printer a fixed IP address in your router and type it below: it is the reliable way. \"Find the printers\" may also find them. A printer accepts only a few connections at once (Elegoo app, slicer...). Never tested on a real printer yet. Unofficial, not affiliated with Elegoo.",
+        "fr": "Pour les imprimantes Elegoo qui parlent SDCP V3 sur le réseau local : résine (Saturn 3 / 4 Ultra, Mars 5 Ultra) et FDM (Centauri Carbon). Gladys lit l'état de l'impression, la progression, les couches, les temps, le nom du fichier, les températures et les ventilateurs par la WebSocket de chaque imprimante (port 3030), sans le cloud Elegoo. Donnez à chaque imprimante une adresse IP fixe dans votre box et saisissez-la ci-dessous : c'est le moyen fiable. « Chercher les imprimantes » peut aussi les trouver. Une imprimante n'accepte que quelques connexions à la fois (application Elegoo, trancheur...). Jamais testé sur une vraie imprimante pour l'instant. Non officiel, sans lien avec Elegoo."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
+          "url": "https://github.com/LM1LC3N7/gladys-elegoo/blob/main/docs/fr.md",
+          "label": { "en": "Guide (French)", "fr": "Guide (français)" }
+        },
+        {
+          "url": "https://github.com/LM1LC3N7/gladys-elegoo/blob/main/docs/en.md",
+          "label": { "en": "Guide (English)", "fr": "Guide (anglais)" }
         }
       ]
     },
     {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
+      "key": "addresses",
+      "type": "string",
+      "label": { "en": "IP addresses of the printers", "fr": "Adresses IP des imprimantes" },
       "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
+        "en": "Separated by commas, for example 192.168.1.50, 192.168.1.51. Shown on the printer screen (network settings).",
+        "fr": "Séparées par des virgules, par exemple 192.168.1.50, 192.168.1.51. Affichées sur l'écran de l'imprimante (réglages réseau)."
       },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
-      "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
-    },
-    {
-      "key": "longitude",
-      "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
-      "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
-      },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
-      "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
-    },
-    {
-      "key": "unit",
-      "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
+      "placeholder": { "en": "192.168.1.50, 192.168.1.51", "fr": "192.168.1.50, 192.168.1.51" },
       "required": false,
-      "default": "celsius",
-      "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
-      ]
+      "default": ""
     },
     {
-      "key": "poll_frequency",
+      "key": "refresh_interval",
       "type": "number",
       "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
       "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
+        "en": "The printers send their changes by themselves; Gladys also asks for their state this often, in seconds.",
+        "fr": "Les imprimantes envoient seules leurs changements ; Gladys leur demande aussi leur état à ce rythme, en secondes."
       },
       "required": false,
-      "default": 300,
-      "min": 60,
-      "max": 3600
+      "default": 30,
+      "min": 10,
+      "max": 300
+    },
+    {
+      "key": "language",
+      "type": "select",
+      "label": { "en": "Language of the names and states", "fr": "Langue des noms et des états" },
+      "description": {
+        "en": "Used for the feature names of the printers added from now on, and for the texts (print state, error).",
+        "fr": "Sert aux noms des fonctionnalités des imprimantes ajoutées désormais, et aux textes (état de l'impression, erreur)."
+      },
+      "required": false,
+      "default": "fr",
+      "options": [
+        { "value": "fr", "label": { "en": "French", "fr": "Français" } },
+        { "value": "en", "label": { "en": "English", "fr": "Anglais" } }
+      ]
+    },
+    {
+      "key": "safety",
+      "type": "section",
+      "label": { "en": "Print control", "fr": "Pilotage des impressions" },
+      "description": {
+        "en": "The \"Control an Elegoo print\" scene action can pause, resume or stop the current print. It is off by default: anyone who can edit the scenes of your Gladys could then stop a print. Gladys never starts a print and never moves the axes. Before each command the printer is asked for its state, and the command is refused if that state is unknown or does not fit (no pause unless it prints, no resume unless paused).",
+        "fr": "L'action de scène « Piloter une impression Elegoo » peut mettre en pause, reprendre ou arrêter l'impression en cours. Elle est désactivée par défaut : toute personne pouvant modifier les scènes de votre Gladys pourrait alors arrêter une impression. Gladys ne lance jamais d'impression et ne déplace jamais les axes. Avant chaque commande, l'imprimante est interrogée sur son état, et la commande est refusée si cet état est inconnu ou ne convient pas (pas de pause si elle n'imprime pas, pas de reprise si elle n'est pas en pause)."
+      }
+    },
+    {
+      "key": "allow_print_control",
+      "type": "boolean",
+      "label": {
+        "en": "Allow pause, resume and stop from Gladys",
+        "fr": "Autoriser pause, reprise et arrêt depuis Gladys"
+      },
+      "required": false,
+      "default": false
     }
   ],
   "actions": [
     {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
+      "key": "find_printers",
+      "label": { "en": "Find the printers", "fr": "Chercher les imprimantes" },
       "timeout_seconds": 30
-    },
-    {
-      "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ]
     }
   ],
   "scene_triggers": [
     {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
+      "key": "print_finished",
+      "label": { "en": "Elegoo print finished", "fr": "Impression Elegoo terminée" },
       "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
+        "en": "A print seen in progress by Gladys ends completed.",
+        "fr": "Une impression vue en cours par Gladys se termine avec succès."
       },
       "fields": [
         {
           "key": "device",
           "type": "select",
           "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
-        },
+          "label": { "en": "Printer", "fr": "Imprimante" }
+        }
+      ],
+      "variables": [{ "key": "file", "type": "string", "label": { "en": "File", "fr": "Fichier" } }]
+    },
+    {
+      "key": "print_error",
+      "label": { "en": "Elegoo print error", "fr": "Erreur d'impression Elegoo" },
+      "description": {
+        "en": "The printer reports an error (print error, error status, or an error message).",
+        "fr": "L'imprimante signale une erreur (erreur d'impression, état d'erreur, ou message d'erreur)."
+      },
+      "fields": [
         {
-          "key": "target",
-          "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
-          "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
-          ]
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": { "en": "Printer", "fr": "Imprimante" }
         }
       ],
       "variables": [
+        { "key": "file", "type": "string", "label": { "en": "File", "fr": "Fichier" } },
+        { "key": "error", "type": "string", "label": { "en": "Error", "fr": "Erreur" } },
         {
-          "key": "target",
-          "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
+          "key": "error_code",
+          "type": "number",
+          "label": { "en": "Error code", "fr": "Code d'erreur" }
         }
       ]
+    },
+    {
+      "key": "print_paused",
+      "label": { "en": "Elegoo print paused", "fr": "Impression Elegoo en pause" },
+      "description": {
+        "en": "The current print goes into pause (from the printer, the Elegoo app or Gladys).",
+        "fr": "L'impression en cours passe en pause (depuis l'imprimante, l'application Elegoo ou Gladys)."
+      },
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": { "en": "Printer", "fr": "Imprimante" }
+        }
+      ],
+      "variables": [{ "key": "file", "type": "string", "label": { "en": "File", "fr": "Fichier" } }]
     }
   ],
   "scene_actions": [
     {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
+      "key": "print_control",
+      "label": { "en": "Control an Elegoo print", "fr": "Piloter une impression Elegoo" },
       "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
+        "en": "Pauses, resumes or stops the current print: off unless allowed in the configuration.",
+        "fr": "Met en pause, reprend ou arrête l'impression en cours : désactivé sauf autorisation dans la configuration."
       },
       "timeout_seconds": 15,
       "fields": [
@@ -149,29 +178,21 @@
           "key": "device",
           "type": "select",
           "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ],
-      "outputs": [
+          "required": true,
+          "label": { "en": "Printer", "fr": "Imprimante" }
+        },
         {
-          "key": "signalled",
-          "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
+          "key": "command",
+          "type": "select",
+          "required": true,
+          "label": { "en": "Command", "fr": "Commande" },
+          "options": [
+            { "value": "pause", "label": { "en": "Pause", "fr": "Pause" } },
+            { "value": "resume", "label": { "en": "Resume", "fr": "Reprise" } },
+            { "value": "stop", "label": { "en": "Stop", "fr": "Arrêt" } }
+          ]
         }
       ]
-    }
-  ],
-  "widgets": [
-    {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
-      "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
-      },
-      "icon": "activity",
-      "action_timeout_seconds": 15
     }
   ]
 }

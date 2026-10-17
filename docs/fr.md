@@ -1,67 +1,122 @@
-# Template de démonstration
+# Imprimantes 3D Elegoo
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+Suivez vos imprimantes 3D Elegoo dans Gladys, sur votre réseau local, sans le
+cloud Elegoo : état de l'impression, progression, couches, temps écoulé et
+restant, nom du fichier, températures et ventilateurs, déclencheurs de scène
+quand une impression se termine, échoue ou passe en pause, et, si vous
+l'autorisez, pause / reprise / arrêt depuis une scène.
 
-## Ce que vous obtenez
+Intégration non officielle, sans lien avec Elegoo.
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+> **Jamais testée sur une vraie imprimante.** Cette première version n'a
+> jamais été testée sur une vraie imprimante : elle suit le protocole public
+> SDCP d'Elegoo et l'intégration Home Assistant `elegoo-homeassistant`, et n'a
+> été vérifiée qu'avec des imprimantes simulées. Vos retours sont les
+> bienvenus sur le forum Gladys.
 
-## Configuration
+## Imprimantes compatibles
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+Les imprimantes Elegoo qui parlent **SDCP V3** par une WebSocket locale
+(port 3030) :
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+- résine : Saturn 3 Ultra, Saturn 4 Ultra, Mars 5 Ultra (et les autres
+  Saturn / Mars SDCP V3) ;
+- FDM : Centauri Carbon.
 
-## Actions
+Non prises en charge : la Centauri Carbon 2 (autre protocole), les anciennes
+imprimantes en SDCP V1 par MQTT, et les imprimantes sans réseau.
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+## Mise en place
+
+1. Donnez à chaque imprimante une **adresse IP fixe** dans votre box
+   (réservation DHCP). L'adresse s'affiche sur l'écran de l'imprimante, dans
+   les réglages réseau.
+2. Dans Gladys, ouvrez l'intégration Elegoo, saisissez les adresses dans
+   **Adresses IP des imprimantes** (séparées par des virgules), et
+   enregistrez. C'est le moyen fiable : l'intégration tourne dans un conteneur
+   qui n'entend pas les diffusions du réseau.
+3. Ou cliquez sur **Chercher les imprimantes** : Gladys envoie le message de
+   découverte SDCP (UDP port 3000) sur votre réseau et liste les imprimantes
+   qui répondent. S'il ne trouve rien, saisissez les adresses.
+4. Les imprimantes apparaissent dans l'onglet **Découverte** dès qu'elles ont
+   envoyé leur état : ajoutez-les.
+
+Une imprimante n'accepte que quelques connexions à la fois (application
+Elegoo, trancheur, Home Assistant...) : si elle ne répond pas, fermez-en une.
+
+## Ce que Gladys affiche
+
+| Fonctionnalité                     | Remarques                                                                                                      |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| État de l'impression               | Au repos, Préparation, Impression, Mise en pause, En pause, Arrêt en cours, Arrêtée, Terminée, Erreur, Occupée |
+| État de la machine                 | Ce que fait l'imprimante (impression, transfert de fichier, autotest, mise à niveau...)                        |
+| Progression (%)                    | Donnée par l'imprimante, ou calculée d'après les couches                                                       |
+| Couche en cours, nombre de couches |                                                                                                                |
+| Temps écoulé, temps restant        | En minutes                                                                                                     |
+| Fichier                            | Le fichier en cours d'impression (le dernier au repos)                                                         |
+| Erreur, code d'erreur              | 0 et « Aucune » quand tout va bien                                                                             |
+| Températures                       | FDM : buse, plateau, enceinte ; résine : LED UV, et la cuve si l'imprimante a un capteur                       |
+| Ventilateurs                       | FDM : ventilateurs de pièce, auxiliaire et d'enceinte (%)                                                      |
+
+Chaque imprimante ne reçoit que les températures et ventilateurs qu'elle
+signale. Les températures et ventilateurs sont envoyés au plus une fois par
+minute ; les autres valeurs dès qu'elles changent. Les imprimantes envoient
+seules leurs changements, et Gladys leur demande aussi leur état à chaque
+**Intervalle de rafraîchissement** (30 s par défaut).
+
+La **Langue des noms et des états** s'applique aux noms des fonctionnalités
+des imprimantes ajoutées ensuite et aux textes (état de l'impression, erreur).
 
 ## Scènes
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+Déclencheurs, chacun avec l'imprimante à surveiller :
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
+- **Impression Elegoo terminée** : une impression vue en cours se termine
+  avec succès (une fois par impression). Variable : `file`.
+- **Erreur d'impression Elegoo** : un état d'erreur, une erreur
+  d'impression, ou un message d'erreur de l'imprimante. Variables : `file`,
+  `error`, `error_code`.
+- **Impression Elegoo en pause** : l'impression passe en pause, quelle que
+  soit l'origine de la pause. Variable : `file`.
 
-## Tableau de bord
+Seuls les changements vus pendant que Gladys est connecté comptent : une
+impression terminée pendant que l'imprimante ou Gladys était éteint ne
+déclenche rien.
 
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
+## Pilotage des impressions (désactivé par défaut)
+
+L'action de scène **Piloter une impression Elegoo** met en pause, reprend ou
+arrête l'impression en cours. Elle est refusée tant que vous n'avez pas coché
+**Autoriser pause, reprise et arrêt depuis Gladys** : toute personne pouvant
+modifier les scènes de votre Gladys pourrait alors arrêter une impression.
+
+Règles de sécurité :
+
+- Gladys **ne lance jamais d'impression** et **ne déplace jamais les axes** :
+  ces commandes n'existent pas dans l'intégration.
+- Avant chaque commande, l'imprimante est interrogée sur son état. Sans
+  réponse récente, rien n'est envoyé. La commande est aussi refusée si elle ne
+  convient pas : pause seulement pendant une impression, reprise seulement en
+  pause, arrêt seulement pendant une impression.
+- Une seule commande à la fois par imprimante. Une commande que l'imprimante
+  ne confirme pas en 5 secondes est signalée comme telle : vérifiez
+  l'imprimante, elle a pu être appliquée.
 
 ## Dépannage
 
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+- **« Pas encore de réponse de ... »** : l'imprimante est éteinte, l'adresse
+  est fausse, ou toutes ses connexions sont prises. Vérifiez qu'elle est
+  joignable depuis la machine Gladys. L'intégration réessaie seule, en
+  attendant un peu plus à chaque fois (jusqu'à 5 minutes).
+- **La recherche ne trouve rien** : saisissez les adresses ; la découverte
+  dépend du réseau entre Gladys et les imprimantes.
+- **Une imprimante a changé d'adresse** : saisissez la nouvelle ;
+  l'imprimante est reconnue par l'identifiant de sa carte, son appareil et
+  son historique sont gardés.
+- Pour oublier une imprimante, retirez son adresse et supprimez son appareil.
+
+## Confidentialité
+
+Tout reste sur votre réseau local : Gladys parle directement aux imprimantes
+(WebSocket sur le port 3030, UDP sur le port 3000). Rien n'est envoyé à Elegoo
+ni à personne d'autre.
