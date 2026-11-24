@@ -16,6 +16,9 @@ import {
   SDCP,
   TIMINGS,
 } from '../src/constants.js';
+import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
+import { SPECS, buildDevice } from '../src/model.js';
+import { assertCoreDevice } from './helpers/coreFeature.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const manifest = JSON.parse(read('gladys-assistant-integration.json'));
@@ -150,4 +153,13 @@ test('actions, scene triggers and the scene action are the ones the code handles
     `timeout_seconds ${control.timeout_seconds}`,
   );
   assert.equal(manifest.widgets, undefined);
+});
+
+test('every feature has a numeric min and max and the other core fields', () => {
+  const gladys = createFakeGladys({ selector: 'elegoo' });
+  const all = Object.keys(SPECS);
+  const common = buildDevice(gladys, { id: 'A', name: '' }, 'fr');
+  const full = buildDevice(gladys, { id: 'B', model: 'Centauri Carbon', caps: all }, 'en');
+  assertCoreDevice(common, 'resin, no optional feature yet');
+  assert.equal(assertCoreDevice(full, 'every feature'), all.length);
 });

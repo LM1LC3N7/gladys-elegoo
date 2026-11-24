@@ -48,12 +48,14 @@ import {
 } from './sdcp/protocol.js';
 import { FileStore, emptyData } from './store.js';
 
-/** What each control command needs the print to be doing. */
+/** What pause and resume need the print to be doing (a stop is never checked). */
 const ALLOWED = {
   pause: new Set(['printing']),
   resume: new Set(['paused']),
-  stop: new Set(['preparing', 'printing', 'pausing', 'paused']),
 };
+
+/** The protective command: never behind the option, never behind a fresh status. */
+const isStop = (command) => command === 'stop';
 
 export class ElegooApp {
   constructor({
@@ -970,19 +972,23 @@ export class ElegooApp {
   // --- Print control (scene action) ------------------------------------------------
 
   /**
-   * Pause, resume or stop the current print of a printer. Off unless
-   * `allow_print_control` is set. Never sent on a state that is unknown or
-   * stale: a fresh status is asked first, and the command is refused when the
-   * print is not in a state it applies to. One command at a time per printer.
+   * Pause, resume or stop the current print of a printer. Pause and resume
+   * are off unless `allow_print_control` is set, and never sent on a state
+   * that is unknown or stale: a fresh status is asked first, and the command
+   * is refused when the print is not in a state it applies to. Stop is the
+   * protective command: never blocked by the option nor by a missing status,
+   * it is sent as soon as the printer is connected (the printer answers
+   * "busy" or an error when nothing is printing). One command at a time per
+   * printer.
    */
   control({ device, command } = {}) {
     const start = this.now();
     const fail = (text) => Promise.reject(new LocalizedError(text, this.config.language));
-    if (!this.config.allowPrintControl) {
-      return fail(T.control.disabled);
-    }
     if (!CONTROL_COMMANDS.includes(command)) {
       return fail(T.control.unknownCommand);
+    }
+    if (!this.config.allowPrintControl && !isStop(command)) {
+      return fail(T.control.disabled);
     }
     const record = typeof device === 'string' ? this.recordOf(device) : undefined;
     if (!record) {
@@ -1004,32 +1010,41 @@ export class ElegooApp {
     const fail = (text) => {
       throw new LocalizedError(text, this.config.language);
     };
+    const stop = isStop(command);
     // Checked again here: the option may have been turned off while this
-    // command waited behind another one.
-    if (!this.config.allowPrintControl) {
+    // command waited behind another one. A stop never needs it.
+    if (!this.config.allowPrintControl && !stop) {
       fail(T.control.disabled);
     }
     const connection = this.connectionOf(record);
     if (!connection?.connected) {
       fail(T.control.offline(name));
     }
-    // Not even the time to read the state and wait for the ack: refused now.
-    if (this.now() - start + TIMINGS.freshStatus + TIMINGS.commandAck > TIMINGS.controlBudget) {
-      fail(T.control.late(name));
-    }
-    const status = await this.freshStatus(record, connection);
-    if (!status) {
-      fail(T.control.stale(name));
-    }
-    if (!ALLOWED[command].has(status.phase)) {
-      fail(T.control.notNow(name, command, status.phase));
-    }
-    if (this.now() - start + TIMINGS.commandAck > TIMINGS.controlBudget) {
-      fail(T.control.late(name));
-    }
-    // Last check right before sending: the option may have been turned off meanwhile.
-    if (!this.config.allowPrintControl) {
-      fail(T.control.disabled);
+    if (stop) {
+      // No fresh status, no phase check: a stop goes as it is, the printer
+      // itself refuses it when nothing is printing.
+      if (this.now() - start + TIMINGS.commandAck > TIMINGS.controlBudget) {
+        fail(T.control.late(name));
+      }
+    } else {
+      // Not even the time to read the state and wait for the ack: refused now.
+      if (this.now() - start + TIMINGS.freshStatus + TIMINGS.commandAck > TIMINGS.controlBudget) {
+        fail(T.control.late(name));
+      }
+      const status = await this.freshStatus(record, connection);
+      if (!status) {
+        fail(T.control.stale(name));
+      }
+      if (!ALLOWED[command].has(status.phase)) {
+        fail(T.control.notNow(name, command, status.phase));
+      }
+      if (this.now() - start + TIMINGS.commandAck > TIMINGS.controlBudget) {
+        fail(T.control.late(name));
+      }
+      // Last check right before sending: the option may have been turned off meanwhile.
+      if (!this.config.allowPrintControl) {
+        fail(T.control.disabled);
+      }
     }
     this.logger.info(`Printer ${record.id}: ${command} asked by a scene`);
     let answer;

@@ -10,6 +10,19 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Changed
+
+- Integration SDK 0.16.1 (no change for the devices); the test runner stops a
+  hanging test after 60 s.
+
+### Fixed
+
+- The **stop** of the "Control an Elegoo print" scene action is never blocked
+  any more: it no longer needs the "Allow pause and resume from Gladys" option
+  (renamed; the key `allow_print_control` is unchanged) nor a fresh state from
+  the printer. It is sent as soon as the printer is connected; the printer
+  refuses it itself when nothing is printing. Pause and resume are unchanged.
+
 ## [0.1.2] - 2026-10-23
 
 ## [0.1.1] - 2026-10-17

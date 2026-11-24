@@ -143,8 +143,8 @@ export const T = {
   },
   control: {
     disabled: {
-      en: 'Print control is off: allow it in the configuration of the Elegoo integration.',
-      fr: "Le pilotage des impressions est désactivé : autorisez-le dans la configuration de l'intégration Elegoo.",
+      en: 'Pause and resume are off: allow them in the configuration of the Elegoo integration (a stop is never blocked).',
+      fr: "Pause et reprise sont désactivées : autorisez-les dans la configuration de l'intégration Elegoo (l'arrêt n'est jamais bloqué).",
     },
     unknownCommand: { en: 'Unknown command.', fr: 'Commande inconnue.' },
     noPrinter: {

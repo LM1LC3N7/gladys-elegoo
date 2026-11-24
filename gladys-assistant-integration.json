@@ -81,16 +81,16 @@
       "type": "section",
       "label": { "en": "Print control", "fr": "Pilotage des impressions" },
       "description": {
-        "en": "The \"Control an Elegoo print\" scene action can pause, resume or stop the current print. It is off by default: anyone who can edit the scenes of your Gladys could then stop a print. Gladys never starts a print and never moves the axes. Before each command the printer is asked for its state, and the command is refused if that state is unknown or does not fit (no pause unless it prints, no resume unless paused).",
-        "fr": "L'action de scène « Piloter une impression Elegoo » peut mettre en pause, reprendre ou arrêter l'impression en cours. Elle est désactivée par défaut : toute personne pouvant modifier les scènes de votre Gladys pourrait alors arrêter une impression. Gladys ne lance jamais d'impression et ne déplace jamais les axes. Avant chaque commande, l'imprimante est interrogée sur son état, et la commande est refusée si cet état est inconnu ou ne convient pas (pas de pause si elle n'imprime pas, pas de reprise si elle n'est pas en pause)."
+        "en": "The \"Control an Elegoo print\" scene action can pause, resume or stop the current print. Pause and resume are off by default: anyone who can edit the scenes of your Gladys could then alter a print. Stop is never blocked. Gladys never starts a print and never moves the axes. Before a pause or a resume the printer is asked for its state, and the command is refused if that state is unknown or does not fit (no pause unless it prints, no resume unless paused).",
+        "fr": "L'action de scène « Piloter une impression Elegoo » peut mettre en pause, reprendre ou arrêter l'impression en cours. Pause et reprise sont désactivées par défaut : toute personne pouvant modifier les scènes de votre Gladys pourrait alors modifier une impression. L'arrêt n'est jamais bloqué. Gladys ne lance jamais d'impression et ne déplace jamais les axes. Avant une pause ou une reprise, l'imprimante est interrogée sur son état, et la commande est refusée si cet état est inconnu ou ne convient pas (pas de pause si elle n'imprime pas, pas de reprise si elle n'est pas en pause)."
       }
     },
     {
       "key": "allow_print_control",
       "type": "boolean",
       "label": {
-        "en": "Allow pause, resume and stop from Gladys",
-        "fr": "Autoriser pause, reprise et arrêt depuis Gladys"
+        "en": "Allow pause and resume from Gladys",
+        "fr": "Autoriser pause et reprise depuis Gladys"
       },
       "required": false,
       "default": false
@@ -169,8 +169,8 @@
       "key": "print_control",
       "label": { "en": "Control an Elegoo print", "fr": "Piloter une impression Elegoo" },
       "description": {
-        "en": "Pauses, resumes or stops the current print: off unless allowed in the configuration.",
-        "fr": "Met en pause, reprend ou arrête l'impression en cours : désactivé sauf autorisation dans la configuration."
+        "en": "Pauses, resumes or stops the current print: pause and resume are off unless allowed in the configuration, stop is never blocked.",
+        "fr": "Met en pause, reprend ou arrête l'impression en cours : pause et reprise sont désactivées sauf autorisation dans la configuration, l'arrêt n'est jamais bloqué."
       },
       "timeout_seconds": 30,
       "fields": [

@@ -6,7 +6,7 @@
 speaks SDCP V1 over MQTT and is not supported. Print state, progress,
 layers, times, file, temperatures and fans become Gladys devices; scene
 triggers fire when a print finishes, fails or is paused; a scene action can
-pause, resume or stop a print, off by default. No Elegoo cloud. Unofficial,
+stop a print, and pause or resume it (off by default). No Elegoo cloud. Unofficial,
 not affiliated with Elegoo.
 
 User documentation: [docs/en.md](docs/en.md) · [docs/fr.md](docs/fr.md).
@@ -43,10 +43,12 @@ Gladys ⇄ SDK ⇄ src/handlers.js ⇄ src/app.js (ElegooApp)
   request (`Cmd 0`) every refresh interval. FDM firmware counts times in
   seconds and has its own print status table (after elegoo-homeassistant).
 - **Control**: the `print_control` scene action (pause `Cmd 129`, stop
-  `Cmd 130`, resume `Cmd 131`) is refused unless `allow_print_control` is set,
-  asks a fresh status first and refuses on an unknown or unfitting state, runs
-  one command at a time per printer and waits 5 s for the acknowledgement.
-  Start (`Cmd 128`) and axis moves are never sent.
+  `Cmd 130`, resume `Cmd 131`) runs one command at a time per printer and
+  waits 5 s for the acknowledgement. Pause and resume are refused unless
+  `allow_print_control` is set, ask a fresh status first and refuse on an
+  unknown or unfitting state. Stop is never blocked: no option, no status
+  check, sent as soon as the printer is connected. Start (`Cmd 128`) and axis
+  moves are never sent.
 
 ## Development
 

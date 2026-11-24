@@ -18,7 +18,7 @@ official JavaScript template. See `TODO.md` for the status and the decisions.
 
 ```bash
 npm install
-npm test                                  # node --test, the built-in runner
+npm test                                  # node --test --test-timeout=60000
 node --test test/app.test.js              # one file
 node --test --test-name-pattern "control" # tests whose name matches
 npm run cover                             # regenerate cover.png (800×534)
@@ -56,6 +56,12 @@ test/                             node --test, the SDK's fake Gladys, fake print
 
 ## Rules
 
+- **Features follow the core model.** Every feature has a non-empty `name`, a
+  numeric `min` and `max` (0/0 for text), boolean `read_only` and
+  `has_feedback`: Gladys refuses it otherwise, and the SDK's fake Gladys
+  (0.16.1) too; `test/helpers/coreFeature.js` checks every device kind.
+  Devices carry `should_poll: false` (Gladys 5.3 polls a device with
+  `poll_frequency` unless it says so).
 - **External ids are forever.** `gladys.externalIds('printer', MainboardID)`,
   the board id of the SDCP frames, never an address or a name. Feature keys
   (`src/model.js` SPECS), manifest keys and scene keys are frozen too.

@@ -3,7 +3,7 @@
 Follow your Elegoo 3D printers in Gladys, on your local network, without the
 Elegoo cloud: print state, progress, layers, time elapsed and remaining, file
 name, temperatures and fans, scene triggers when a print finishes, fails or is
-paused, and, if you allow it, pause / resume / stop from a scene.
+paused, stop a print from a scene, and, if you allow it, pause / resume it.
 
 Unofficial integration, not affiliated with Elegoo.
 
@@ -77,21 +77,23 @@ Triggers, each with the printer to watch:
 Only changes seen while Gladys is connected count: a print that finished while
 the printer or Gladys was off fires nothing.
 
-## Print control (off by default)
+## Print control (pause and resume off by default)
 
 The **Control an Elegoo print** scene action pauses, resumes or stops the
-current print. It is refused until you tick **Allow pause, resume and stop
-from Gladys**: anyone who can edit the scenes of your Gladys could then stop a
-print.
+current print. Pause and resume are refused until you tick **Allow pause and
+resume from Gladys**: anyone who can edit the scenes of your Gladys could then
+alter a print. Stop is the protective command: it is never blocked, neither by
+that option nor by a printer that does not answer its state.
 
 Safety rules:
 
 - Gladys **never starts a print** and **never moves the axes**: those commands
   do not exist in the integration.
-- Before each command, the printer is asked for its state. Without a fresh
-  answer, nothing is sent. The command is also refused if it does not fit:
-  pause only while printing, resume only while paused, stop only during a
-  print.
+- Before a pause or a resume, the printer is asked for its state. Without a
+  fresh answer, nothing is sent. The command is also refused if it does not
+  fit: pause only while printing, resume only while paused.
+- A stop is sent as it is, as soon as the printer is connected; when nothing
+  is printing, the printer itself refuses it and Gladys reports its answer.
 - One command at a time per printer. A command the printer does not confirm
   within 5 seconds is reported as such: check the printer, it may have been
   applied.

@@ -4,7 +4,8 @@ Suivez vos imprimantes 3D Elegoo dans Gladys, sur votre réseau local, sans le
 cloud Elegoo : état de l'impression, progression, couches, temps écoulé et
 restant, nom du fichier, températures et ventilateurs, déclencheurs de scène
 quand une impression se termine, échoue ou passe en pause, et, si vous
-l'autorisez, pause / reprise / arrêt depuis une scène.
+arrêter une impression depuis une scène et, si vous l'autorisez, la mettre
+en pause ou la reprendre.
 
 Intégration non officielle, sans lien avec Elegoo.
 
@@ -84,21 +85,25 @@ Seuls les changements vus pendant que Gladys est connecté comptent : une
 impression terminée pendant que l'imprimante ou Gladys était éteint ne
 déclenche rien.
 
-## Pilotage des impressions (désactivé par défaut)
+## Pilotage des impressions (pause et reprise désactivées par défaut)
 
 L'action de scène **Piloter une impression Elegoo** met en pause, reprend ou
-arrête l'impression en cours. Elle est refusée tant que vous n'avez pas coché
-**Autoriser pause, reprise et arrêt depuis Gladys** : toute personne pouvant
-modifier les scènes de votre Gladys pourrait alors arrêter une impression.
+arrête l'impression en cours. Pause et reprise sont refusées tant que vous
+n'avez pas coché **Autoriser pause et reprise depuis Gladys** : toute personne
+pouvant modifier les scènes de votre Gladys pourrait alors modifier une
+impression. L'arrêt est la commande de protection : il n'est jamais bloqué, ni
+par cette option, ni par une imprimante qui ne renvoie pas son état.
 
 Règles de sécurité :
 
 - Gladys **ne lance jamais d'impression** et **ne déplace jamais les axes** :
   ces commandes n'existent pas dans l'intégration.
-- Avant chaque commande, l'imprimante est interrogée sur son état. Sans
-  réponse récente, rien n'est envoyé. La commande est aussi refusée si elle ne
-  convient pas : pause seulement pendant une impression, reprise seulement en
-  pause, arrêt seulement pendant une impression.
+- Avant une pause ou une reprise, l'imprimante est interrogée sur son état.
+  Sans réponse récente, rien n'est envoyé. La commande est aussi refusée si
+  elle ne convient pas : pause seulement pendant une impression, reprise
+  seulement en pause.
+- Un arrêt part tel quel dès que l'imprimante est connectée ; si rien
+  n'imprime, l'imprimante elle-même le refuse et Gladys rapporte sa réponse.
 - Une seule commande à la fois par imprimante. Une commande que l'imprimante
   ne confirme pas en 5 secondes est signalée comme telle : vérifiez
   l'imprimante, elle a pu être appliquée.
