@@ -5,8 +5,8 @@
 // board id the printer gives in its SDCP frames, whatever its address or
 // name. Feature keys are frozen (the FEATURES list below).
 //
-// Every feature is read-only: the only commands (pause, resume, stop) are a
-// scene action, off by default (src/app.js).
+// Every feature is read-only: the only commands are a scene action
+// (src/app.js): pause and resume off by default, stop never blocked.
 //
 // Units: only the ones the Gladys core lists for the category
 // (DEVICE_FEATURE_UNITS_BY_CATEGORY): °C for the device temperatures, minutes

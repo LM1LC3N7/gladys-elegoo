@@ -104,9 +104,10 @@ Règles de sécurité :
   seulement en pause.
 - Un arrêt part tel quel dès que l'imprimante est connectée ; si rien
   n'imprime, l'imprimante elle-même le refuse et Gladys rapporte sa réponse.
-- Une seule commande à la fois par imprimante. Une commande que l'imprimante
-  ne confirme pas en 5 secondes est signalée comme telle : vérifiez
-  l'imprimante, elle a pu être appliquée.
+- Pause et reprise partent une à la fois par imprimante. Un arrêt part
+  aussitôt, devant elles, et une pause ou une reprise pas encore partie est
+  abandonnée. Une commande que l'imprimante ne confirme pas en 5 secondes est
+  signalée comme telle : vérifiez l'imprimante, elle a pu être appliquée.
 
 ## Dépannage
 

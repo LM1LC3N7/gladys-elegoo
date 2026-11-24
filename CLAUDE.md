@@ -68,9 +68,13 @@ test/                             node --test, the SDK's fake Gladys, fake print
 - **The container rootfs is read-only.** Write only under `/data`, the one
   writable volume. Never log tokens, passwords or API keys.
 - **Safety.** No command starts a print or moves an axis, ever. Pause, resume
-  and stop exist only as a scene action, refused unless `allow_print_control`
-  is set, sent only after a fresh status shows a state they apply to, one at a
-  time per printer, and never later than `TIMINGS.controlBudget`.
+  and stop exist only as a scene action. Pause and resume are refused unless
+  `allow_print_control` is set, sent only after a fresh status shows a state
+  they apply to, one at a time per printer, and never later than
+  `TIMINGS.controlBudget`. Stop is the protective command and is **never
+  blocked**: no option, no fresh status, no phase check, no queue, no budget;
+  sent at once when the printer is connected, and a pause or resume not yet
+  sent when it arrives is dropped. Do not put a gate back on it.
 - **Nothing from the network is trusted.** Messages are bounded (`ws`
   `maxPayload`), parsed in `src/sdcp/protocol.js`, their topic and board id
   checked, every number range-checked (dropped, never clamped).

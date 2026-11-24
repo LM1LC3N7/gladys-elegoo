@@ -15,7 +15,7 @@ export function registerHandlers(gladys, app, logger) {
   // Configuration screen button.
   gladys.onAction(ACTIONS.FIND, () => app.findPrinters());
 
-  // Scene action: pause, resume, stop (off unless allowed in the configuration).
+  // Scene action: pause, resume (off unless allowed in the configuration) and stop (never blocked).
   gladys.onSceneAction(SCENE_ACTIONS.CONTROL, async (fields) => {
     await app.control({ device: fields?.device, command: fields?.command });
     return undefined;

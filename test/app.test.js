@@ -392,6 +392,109 @@ test('print control allowed: fresh state first, then the command and its ack', a
   );
 });
 
+/** Holds the answers of the printer to one command until `release()`. */
+function hold(printer, cmd) {
+  const original = printer.received.bind(printer);
+  const held = [];
+  printer.received = (text) => {
+    const request = text === 'ping' ? undefined : JSON.parse(text);
+    if (request?.Data.Cmd !== cmd) return original(text);
+    // Recorded as received (commands() sees it), answered only on release.
+    printer.requests.push(request);
+    held.push(text);
+  };
+  return {
+    release() {
+      printer.received = original;
+      // original() records the request again: a duplicate in commands(), harmless here.
+      for (const text of held.splice(0)) original(text);
+    },
+  };
+}
+
+test('print control: last state idle and option off, the stop is still sent', async (t) => {
+  const { gladys, printers, app } = await setup(t);
+  await createAll(gladys);
+  const printer = printers['192.168.1.50'];
+  printer.pushStatus({ CurrentStatus: [0], PrintInfo: { Status: 0 } });
+  await settle();
+  assert.equal(app.statuses.get(RESIN_ID)?.status.phase, 'idle', 'precondition');
+  const before = printer.commands().length;
+  const stop = await gladys.fake.sceneAction('print_control', {
+    device: id(RESIN_ID),
+    command: 'stop',
+  });
+  assert.equal(stop.success, true, stop.error);
+  assert.deepEqual(printer.commands().slice(before, before + 1), [CMD.STOP]);
+  // The printer's own refusal, reported as it is.
+  printer.acks[CMD.STOP] = 1;
+  const refused = await gladys.fake.sceneAction('print_control', {
+    device: id(RESIN_ID),
+    command: 'stop',
+  });
+  assert.equal(refused.success, false);
+  assert.match(refused.error, /occupée/);
+  assert.equal(printer.commands().filter((c) => c === CMD.STOP).length, 2);
+});
+
+test('print control: a stop goes at once ahead of a pause waiting for its ack', async (t) => {
+  const { gladys, clock, printers, app } = await setup(t, {
+    config: { addresses: '192.168.1.50', allow_print_control: true, language: 'en' },
+  });
+  await createAll(gladys);
+  const printer = printers['192.168.1.50'];
+  hold(printer, CMD.PAUSE);
+  const pause = app.control({ device: id(RESIN_ID), command: 'pause' });
+  pause.catch(() => {});
+  await settle();
+  assert.ok(printer.commands().includes(CMD.PAUSE), 'pause sent, waiting for its ack');
+  // No clock advance: the stop is sent and confirmed while the pause still waits.
+  const stop = app.control({ device: id(RESIN_ID), command: 'stop' });
+  stop.catch(() => {});
+  await settle();
+  assert.ok(printer.commands().includes(CMD.STOP), 'stop sent before the pause ack deadline');
+  await stop;
+  await clock.advance(TIMINGS.commandAck);
+  await assert.rejects(pause, /did not confirm/);
+});
+
+test('print control: a stop drops a pause still waiting for its fresh state', async (t) => {
+  const { gladys, printers, app } = await setup(t, {
+    config: { addresses: '192.168.1.50', allow_print_control: true, language: 'en' },
+  });
+  await createAll(gladys);
+  const printer = printers['192.168.1.50'];
+  const status = hold(printer, CMD.STATUS);
+  const pause = app.control({ device: id(RESIN_ID), command: 'pause' });
+  pause.catch(() => {});
+  await settle();
+  assert.ok(!printer.commands().includes(CMD.PAUSE), 'pause waits for the fresh state');
+  const stop = app.control({ device: id(RESIN_ID), command: 'stop' });
+  stop.catch(() => {});
+  await settle();
+  assert.ok(printer.commands().includes(CMD.STOP), 'stop sent at once, no clock advance');
+  await stop;
+  status.release();
+  await assert.rejects(pause, /A stop was asked/);
+  assert.ok(!printer.commands().includes(CMD.PAUSE), 'the pause is never sent after the stop');
+});
+
+test('print control: turned off while waiting for the fresh state, the pause is not sent', async (t) => {
+  const { gladys, printers, app } = await setup(t, {
+    config: { addresses: '192.168.1.50', allow_print_control: true, language: 'en' },
+  });
+  await createAll(gladys);
+  const printer = printers['192.168.1.50'];
+  const status = hold(printer, CMD.STATUS);
+  const pause = app.control({ device: id(RESIN_ID), command: 'pause' });
+  pause.catch(() => {});
+  await settle();
+  app.config = { ...app.config, allowPrintControl: false };
+  status.release();
+  await assert.rejects(pause, /off/);
+  assert.ok(!printer.commands().includes(CMD.PAUSE));
+});
+
 test('print control: no fresh state, no pause; a stop still goes', async (t) => {
   const { gladys, clock, printers, app } = await setup(t, {
     config: { addresses: '192.168.1.50', allow_print_control: true, language: 'en' },
@@ -441,15 +544,8 @@ test('print control: a queued command with no time left is refused before acting
   });
   await createAll(gladys);
   const printer = printers['192.168.1.50'];
-  const original = printer.received.bind(printer);
-  printer.received = (text) => {
-    if (text !== 'ping' && JSON.parse(text).Data.Cmd === CMD.STOP) {
-      printer.requests.push(JSON.parse(text));
-      return;
-    }
-    original(text);
-  };
-  const first = app.control({ device: id(RESIN_ID), command: 'stop' });
+  hold(printer, CMD.PAUSE);
+  const first = app.control({ device: id(RESIN_ID), command: 'pause' });
   const second = app.control({ device: id(RESIN_ID), command: 'pause' });
   first.catch(() => {});
   second.catch(() => {});
@@ -458,8 +554,7 @@ test('print control: a queued command with no time left is refused before acting
   await clock.advance(TIMINGS.commandAck);
   await assert.rejects(first, /did not confirm/);
   await assert.rejects(second, /No time left/);
-  assert.equal(printer.commands().filter((c) => c === CMD.STOP).length, 1, 'sent once');
-  assert.ok(!printer.commands().includes(CMD.PAUSE));
+  assert.equal(printer.commands().filter((c) => c === CMD.PAUSE).length, 1, 'sent once');
   assert.equal(
     printer.commands().filter((c) => c === CMD.STATUS).length,
     statusRequests,

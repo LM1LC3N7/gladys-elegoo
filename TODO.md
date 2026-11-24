@@ -105,14 +105,17 @@ up to date at the end of every milestone.
   Fired only for created devices, at most 60 events a minute.
 - Control: a scene action (not a feature), so no dashboard button can stop a
   print by a misclick; `allow_print_control` false by default, checked again
-  when a queued command starts; one command at a time per printer; refused
-  at once when the fresh read and the ack wait no longer fit the budget; a
-  fresh status is asked first (2.5 s), the command is refused on no answer
-  or a phase it does not fit (pause: printing; resume: paused). Stop (the
-  protective command) is never blocked: no option, no fresh status, no phase
-  check, sent as soon as the printer is connected (the printer refuses it
-  itself when nothing prints); the whole command (ack wait
-  included) fits in 12 s after the scene reached the action. Declared
+  when a queued command starts; pause and resume one at a time per printer;
+  refused at once when the fresh read and the ack wait no longer fit the
+  budget; a fresh status is asked first (2.5 s), the command is refused on
+  no answer or a phase it does not fit (pause: printing; resume: paused).
+  Stop (the protective command) is never blocked: no option, no fresh
+  status, no phase check, no queue, no budget, sent at once when the printer
+  is connected (the printer refuses it itself when nothing prints); a pause
+  or resume not yet sent when a stop arrives is dropped (stop counter per
+  printer, read again right before the send); for pause and resume the whole
+  command (ack wait included) fits in 12 s after the scene reached the
+  action. Declared
   timeout 30 s: the core starts counting when the scene enters the action,
   including up to 15 s of waiting for the integration's connection
   (runSceneAction.js, MESSAGE_CONNECTION_WAIT_MS), so 15 + 12 + 2 s margin

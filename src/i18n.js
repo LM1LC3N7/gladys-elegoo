@@ -171,6 +171,10 @@ export const T = {
       en: `${name} refused the command: ${ACKS[ack]?.en ?? `code ${ack}`}.`,
       fr: `${name} a refusé la commande : ${ACKS[ack]?.fr ?? `code ${ack}`}.`,
     }),
+    droppedByStop: (name, command) => ({
+      en: `A stop was asked for ${name} meanwhile: ${COMMAND_NAMES[command].en} not sent.`,
+      fr: `Un arrêt a été demandé pour ${name} entre-temps : ${COMMAND_NAMES[command].fr} non envoyée.`,
+    }),
     noAnswer: (name) => ({
       en: `${name} did not confirm the command in time: check the printer, it may have been applied.`,
       fr: `${name} n'a pas confirmé la commande à temps : vérifiez l'imprimante, elle a pu être appliquée.`,

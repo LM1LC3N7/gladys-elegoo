@@ -94,9 +94,10 @@ Safety rules:
   fit: pause only while printing, resume only while paused.
 - A stop is sent as it is, as soon as the printer is connected; when nothing
   is printing, the printer itself refuses it and Gladys reports its answer.
-- One command at a time per printer. A command the printer does not confirm
-  within 5 seconds is reported as such: check the printer, it may have been
-  applied.
+- Pause and resume go one at a time per printer. A stop goes at once, ahead
+  of them, and a pause or resume that was not sent yet is dropped. A command
+  the printer does not confirm within 5 seconds is reported as such: check
+  the printer, it may have been applied.
 
 ## Troubleshooting
 

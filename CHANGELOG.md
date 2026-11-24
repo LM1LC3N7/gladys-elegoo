@@ -21,7 +21,9 @@ the notes of the version's GitHub Release.
   any more: it no longer needs the "Allow pause and resume from Gladys" option
   (renamed; the key `allow_print_control` is unchanged) nor a fresh state from
   the printer. It is sent as soon as the printer is connected; the printer
-  refuses it itself when nothing is printing. Pause and resume are unchanged.
+  refuses it itself when nothing is printing. It no longer waits behind a
+  pause or resume in flight either: sent at once, and a pause or resume not
+  sent yet is dropped. Pause and resume are otherwise unchanged.
 
 ## [0.1.2] - 2026-10-23
 

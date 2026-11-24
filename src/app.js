@@ -54,7 +54,7 @@ const ALLOWED = {
   resume: new Set(['paused']),
 };
 
-/** The protective command: never behind the option, never behind a fresh status. */
+/** The protective command: never behind the option, a fresh status, the queue or a budget. */
 const isStop = (command) => command === 'stop';
 
 export class ElegooApp {
@@ -91,6 +91,8 @@ export class ElegooApp {
     this.waiters = new Map();
     /** printer id -> the queue of its control commands */
     this.queues = new Map();
+    /** Stops asked per printer id: a pause or resume not yet sent when one arrives is dropped. */
+    this.stops = new Map();
     /** featureId -> last value, sent when the user creates the device */
     this.lastValues = new Map();
     this.created = new Set();
@@ -973,13 +975,14 @@ export class ElegooApp {
 
   /**
    * Pause, resume or stop the current print of a printer. Pause and resume
-   * are off unless `allow_print_control` is set, and never sent on a state
-   * that is unknown or stale: a fresh status is asked first, and the command
-   * is refused when the print is not in a state it applies to. Stop is the
-   * protective command: never blocked by the option nor by a missing status,
-   * it is sent as soon as the printer is connected (the printer answers
-   * "busy" or an error when nothing is printing). One command at a time per
-   * printer.
+   * are off unless `allow_print_control` is set, never sent on a state that
+   * is unknown or stale (a fresh status is asked first, and the command is
+   * refused when the print is not in a state it applies to), one at a time
+   * per printer. Stop is the protective command: never blocked by the option,
+   * by a missing status, by a pause or resume in flight nor by a budget, it is
+   * sent at once, outside the queue, as soon as the printer is connected (the
+   * printer answers "busy" or an error when nothing is printing). A pause or
+   * resume not yet sent when a stop arrives is never sent after it.
    */
   control({ device, command } = {}) {
     const start = this.now();
@@ -994,6 +997,10 @@ export class ElegooApp {
     if (!record) {
       return fail(T.control.noPrinter);
     }
+    if (isStop(command)) {
+      this.stops.set(record.id, (this.stops.get(record.id) ?? 0) + 1);
+      return this.doStop(record);
+    }
     const queue = this.queues.get(record.id) ?? Promise.resolve();
     const run = queue.catch(() => {}).then(() => this.doControl(record, command, start));
     this.queues.set(record.id, run);
@@ -1005,47 +1012,64 @@ export class ElegooApp {
     return run;
   }
 
+  /** A stop: sent at once, no option, no fresh status, no phase, no queue, no budget. */
+  async doStop(record) {
+    const name = record.name || record.model || record.id;
+    const connection = this.connectionOf(record);
+    if (!connection?.connected) {
+      throw new LocalizedError(T.control.offline(name), this.config.language);
+    }
+    return this.send(record, connection, 'stop');
+  }
+
+  /** A pause or a resume, from the queue of its printer. */
   async doControl(record, command, start) {
     const name = record.name || record.model || record.id;
     const fail = (text) => {
       throw new LocalizedError(text, this.config.language);
     };
-    const stop = isStop(command);
+    // A stop asked after this one was queued drops it, even before it is sent.
+    const stops = this.stops.get(record.id) ?? 0;
     // Checked again here: the option may have been turned off while this
-    // command waited behind another one. A stop never needs it.
-    if (!this.config.allowPrintControl && !stop) {
+    // command waited behind another one.
+    if (!this.config.allowPrintControl) {
       fail(T.control.disabled);
     }
     const connection = this.connectionOf(record);
     if (!connection?.connected) {
       fail(T.control.offline(name));
     }
-    if (stop) {
-      // No fresh status, no phase check: a stop goes as it is, the printer
-      // itself refuses it when nothing is printing.
-      if (this.now() - start + TIMINGS.commandAck > TIMINGS.controlBudget) {
-        fail(T.control.late(name));
-      }
-    } else {
-      // Not even the time to read the state and wait for the ack: refused now.
-      if (this.now() - start + TIMINGS.freshStatus + TIMINGS.commandAck > TIMINGS.controlBudget) {
-        fail(T.control.late(name));
-      }
-      const status = await this.freshStatus(record, connection);
-      if (!status) {
-        fail(T.control.stale(name));
-      }
-      if (!ALLOWED[command].has(status.phase)) {
-        fail(T.control.notNow(name, command, status.phase));
-      }
-      if (this.now() - start + TIMINGS.commandAck > TIMINGS.controlBudget) {
-        fail(T.control.late(name));
-      }
-      // Last check right before sending: the option may have been turned off meanwhile.
-      if (!this.config.allowPrintControl) {
-        fail(T.control.disabled);
-      }
+    // Not even the time to read the state and wait for the ack: refused now.
+    if (this.now() - start + TIMINGS.freshStatus + TIMINGS.commandAck > TIMINGS.controlBudget) {
+      fail(T.control.late(name));
     }
+    const status = await this.freshStatus(record, connection);
+    if (!status) {
+      fail(T.control.stale(name));
+    }
+    if (!ALLOWED[command].has(status.phase)) {
+      fail(T.control.notNow(name, command, status.phase));
+    }
+    if (this.now() - start + TIMINGS.commandAck > TIMINGS.controlBudget) {
+      fail(T.control.late(name));
+    }
+    // Last checks right before sending: the option may have been turned off
+    // meanwhile, or a stop asked: nothing emitted before a stop goes after it.
+    if (!this.config.allowPrintControl) {
+      fail(T.control.disabled);
+    }
+    if ((this.stops.get(record.id) ?? 0) !== stops) {
+      fail(T.control.droppedByStop(name, command));
+    }
+    return this.send(record, connection, command);
+  }
+
+  /** Sends one control command and reports the printer's answer. */
+  async send(record, connection, command) {
+    const name = record.name || record.model || record.id;
+    const fail = (text) => {
+      throw new LocalizedError(text, this.config.language);
+    };
     this.logger.info(`Printer ${record.id}: ${command} asked by a scene`);
     let answer;
     try {

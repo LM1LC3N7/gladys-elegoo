@@ -43,18 +43,19 @@ Gladys ⇄ SDK ⇄ src/handlers.js ⇄ src/app.js (ElegooApp)
   request (`Cmd 0`) every refresh interval. FDM firmware counts times in
   seconds and has its own print status table (after elegoo-homeassistant).
 - **Control**: the `print_control` scene action (pause `Cmd 129`, stop
-  `Cmd 130`, resume `Cmd 131`) runs one command at a time per printer and
-  waits 5 s for the acknowledgement. Pause and resume are refused unless
-  `allow_print_control` is set, ask a fresh status first and refuse on an
-  unknown or unfitting state. Stop is never blocked: no option, no status
-  check, sent as soon as the printer is connected. Start (`Cmd 128`) and axis
-  moves are never sent.
+  `Cmd 130`, resume `Cmd 131`) waits 5 s for the acknowledgement. Pause and
+  resume are refused unless `allow_print_control` is set, ask a fresh status
+  first, refuse on an unknown or unfitting state and go one at a time per
+  printer. Stop is never blocked: no option, no status check, no queue, no
+  budget, sent at once when the printer is connected, ahead of a pause or
+  resume in flight, which is dropped if not sent yet. Start (`Cmd 128`) and
+  axis moves are never sent.
 
 ## Development
 
 ```bash
 npm install
-npm test                                        # node --test, no network
+npm test                                        # node --test --test-timeout=60000, no network
 npm run lint && npm run format:check
 npm run audit
 npm run cover                                   # regenerates cover.png (800×534, no dependency)
