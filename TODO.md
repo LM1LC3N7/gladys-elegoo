@@ -169,3 +169,7 @@ up to date at the end of every milestone.
   re-synchronises the connections.
 - When the state budget runs out, the states go before the measures;
   temperatures and fans spaced by 60 s per feature.
+
+## Next patch
+
+- Migration review minors: see `_lots/migration-reviews/w13-gladys-elegoo-r3.md`.
