@@ -479,6 +479,34 @@ test('print control: a stop drops a pause still waiting for its fresh state', as
   assert.ok(!printer.commands().includes(CMD.PAUSE), 'the pause is never sent after the stop');
 });
 
+test('print control: a stop drops a pause queued behind another one', async (t) => {
+  const { gladys, clock, printers, app } = await setup(t, {
+    config: { addresses: '192.168.1.50', allow_print_control: true, language: 'en' },
+  });
+  await createAll(gladys);
+  const printer = printers['192.168.1.50'];
+  hold(printer, CMD.PAUSE);
+  const first = app.control({ device: id(RESIN_ID), command: 'pause' });
+  const second = app.control({ device: id(RESIN_ID), command: 'pause' });
+  first.catch(() => {});
+  second.catch(() => {});
+  await settle();
+  assert.equal(printer.commands().filter((c) => c === CMD.PAUSE).length, 1, 'first sent');
+  const stop = app.control({ device: id(RESIN_ID), command: 'stop' });
+  stop.catch(() => {});
+  await settle();
+  assert.ok(printer.commands().includes(CMD.STOP), 'stop sent at once');
+  await stop;
+  // The printer still says "printing" (the fake never changes its status):
+  // the second pause would fit, it is dropped by the stop all the same.
+  await clock.advance(TIMINGS.commandAck);
+  await assert.rejects(first, /did not confirm/);
+  await assert.rejects(second, /A stop was asked/);
+  await settle();
+  assert.equal(printer.commands().filter((c) => c === CMD.PAUSE).length, 1, 'second never sent');
+  assert.equal(app.statuses.get(RESIN_ID)?.status.phase, 'printing');
+});
+
 test('print control: turned off while waiting for the fresh state, the pause is not sent', async (t) => {
   const { gladys, printers, app } = await setup(t, {
     config: { addresses: '192.168.1.50', allow_print_control: true, language: 'en' },

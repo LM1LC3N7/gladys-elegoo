@@ -38,6 +38,11 @@ up to date at the end of every milestone.
     values in % (0-100, or 0-255?), the status table on the latest firmware;
   - the number of WebSocket clients each model accepts;
   - the acks of pause / resume / stop on each model.
+- [ ] **Next patch** (wave 13 review, minor): a stop asked while the
+      connection to the printer is down is refused at once ("not connected"),
+      while the reconnection waits 2 s to 5 min. To decide: an immediate
+      reconnection attempt and the send if it succeeds within the budget
+      (nothing can go without a connection either way).
 - [ ] **Milestone 3 — more**: target temperatures, the print speed, the
       camera (RTSP `Cmd 386`, through a go2rtc-like sub-container), the
       Centauri Carbon 2 (CC2 MQTT protocol), the SDCP V1 MQTT printers, a
@@ -113,7 +118,8 @@ up to date at the end of every milestone.
   status, no phase check, no queue, no budget, sent at once when the printer
   is connected (the printer refuses it itself when nothing prints); a pause
   or resume not yet sent when a stop arrives is dropped (stop counter per
-  printer, read again right before the send); for pause and resume the whole
+  printer, read when the command is asked, again when it leaves the queue
+  and right before the send); for pause and resume the whole
   command (ack wait included) fits in 12 s after the scene reached the
   action. Declared
   timeout 30 s: the core starts counting when the scene enters the action,

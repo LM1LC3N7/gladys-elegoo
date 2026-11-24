@@ -1001,8 +1001,12 @@ export class ElegooApp {
       this.stops.set(record.id, (this.stops.get(record.id) ?? 0) + 1);
       return this.doStop(record);
     }
+    // Read now, before queuing: a stop asked while this command waits behind
+    // another one, or for its fresh state, drops it (nothing emitted before a
+    // stop goes after it).
+    const stops = this.stops.get(record.id) ?? 0;
     const queue = this.queues.get(record.id) ?? Promise.resolve();
-    const run = queue.catch(() => {}).then(() => this.doControl(record, command, start));
+    const run = queue.catch(() => {}).then(() => this.doControl(record, command, start, stops));
     this.queues.set(record.id, run);
     run
       .finally(() => {
@@ -1022,16 +1026,21 @@ export class ElegooApp {
     return this.send(record, connection, 'stop');
   }
 
-  /** A pause or a resume, from the queue of its printer. */
-  async doControl(record, command, start) {
+  /**
+   * A pause or a resume, from the queue of its printer. `stops`: the stop
+   * counter of the printer when the command was asked.
+   */
+  async doControl(record, command, start, stops) {
     const name = record.name || record.model || record.id;
     const fail = (text) => {
       throw new LocalizedError(text, this.config.language);
     };
-    // A stop asked after this one was queued drops it, even before it is sent.
-    const stops = this.stops.get(record.id) ?? 0;
-    // Checked again here: the option may have been turned off while this
-    // command waited behind another one.
+    const droppedByStop = () => (this.stops.get(record.id) ?? 0) !== stops;
+    // Checked again here: the option may have been turned off, or a stop
+    // asked, while this command waited behind another one.
+    if (droppedByStop()) {
+      fail(T.control.droppedByStop(name, command));
+    }
     if (!this.config.allowPrintControl) {
       fail(T.control.disabled);
     }
@@ -1058,7 +1067,7 @@ export class ElegooApp {
     if (!this.config.allowPrintControl) {
       fail(T.control.disabled);
     }
-    if ((this.stops.get(record.id) ?? 0) !== stops) {
+    if (droppedByStop()) {
       fail(T.control.droppedByStop(name, command));
     }
     return this.send(record, connection, command);
